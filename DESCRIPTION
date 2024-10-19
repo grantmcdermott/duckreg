@@ -23,6 +23,7 @@ Description: Leverages the power of DuckDB to run regressions on very large
 Imports: 
   DBI,
   duckdb,
+  glue,
   Matrix,
   stats
 Suggests: 
