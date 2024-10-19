@@ -1,13 +1,12 @@
+# Retrieved 2017-Oct-12 from https://github.com/github/gitignore/blob/master/R.gitignore
+# Licensed under CC0-1.0 https://github.com/github/gitignore/blob/master/LICENSE
+
 # History files
 .Rhistory
 .Rapp.history
 
 # Session Data files
 .RData
-.RDataTmp
-
-# User-specific files
-.Ruserdata
 
 # Example code in package build process
 *-Ex.R
@@ -29,21 +28,48 @@ vignettes/*.pdf
 .httr-oauth
 
 # knitr and R markdown default cache directories
-*_cache/
+/*_cache/
 /cache/
 
 # Temporary files created by R markdown
 *.utf8.md
 *.knit.md
 
-# R Environment Variables
-.Renviron
 
-# pkgdown site
-docs/
 
-# translation temp files
-po/*~
+## Retrieved 2023-11-16 from https://github.com/github/gitignore/blob/main/C%2B%2B.gitignore
 
-# RStudio Connect folder
-rsconnect/
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+SCRATCH/

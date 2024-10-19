@@ -1,0 +1,32 @@
+Package: duckreg
+Type: Package
+Title: Run stratified and saturated regressions out-of-memory with DuckDB
+Version: 0.0.1
+Date: 2024-10-14
+Authors@R:
+  c(
+    person(
+      given = "Grant",
+      family = "McDermott",
+      role = c("aut", "cre"),
+      email = "gmcd@amazon.com",
+      comment = c(ORCID = "0000-0001-7883-8573")
+    )
+  )
+Description: Leverages the power of DuckDB to run regressions on very large
+  datasets, which may not fit into R's memory. The core procedure follows Wong
+  et al. (2021) <doi:10.48550/arXiv.2102.11297> by reducing ("compressing") the
+  data to a set of summary statistics and then running frequency-weighted least
+  squares on this smaller dataset. Robust standard errors are computed from
+  sufficient statistics, while clustered standard errors are computed using the
+  cluster bootstrap.
+Imports: 
+  DBI,
+  duckdb,
+  Matrix,
+  stats
+Suggests: 
+  tinytest
+Encoding: UTF-8
+RoxygenNote: 7.3.2
+License: MIT + file LICENSE
