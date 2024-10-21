@@ -2,11 +2,12 @@
 
 _tl;dr_ Very fast out-of-memory regressions with DuckDB.
 
-R package for running stratified/saturated regressions out-of-memory with DuckDB. The core procedure follows
-[Wong _et al_. (2021)](doi:10.48550/arXiv.2102.11297) by reducing
-("compressing") the data to a set of summary statistics and then running
-frequency-weighted least squares on this smaller dataset. Robust standard errors
-are computed from sufficient statistics.
+R package for running stratified/saturated regressions out-of-memory with
+[DuckDB](https://duckdb.org/). The core procedure follows
+[Wong _et al_. (2021)](https://doi.org/10.48550/arXiv.2102.11297)
+by reducing ("compressing") the data to a set of summary statistics and then
+running frequency-weighted least squares on this smaller dataset. Robust
+standard errors are computed from sufficient statistics.
 
 The **duckreg** package is inspired by, and has similar aims to, the
 [Python package of the same name](https://github.com/py-econometrics/duckreg).
