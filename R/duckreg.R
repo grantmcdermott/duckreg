@@ -1,11 +1,17 @@
 #' Run a compressed regression with a DuckDB backend.
 #'
 #' @md
-#' @param fml Model \code{\link[stats]{formula}}.
+#' @param fml A \code{\link[stats]{formula}} representing the relation to be
+#' estimated. Fixed-effects should be included after a pipe, e.g
+#' `fml = y ~ x1 + x2 | fe1 + f2`. Currently, only simple additive terms
+#' are supported (i.e., no interaction terms, transformations or literals).
 #' @param conn Connection to a DuckDB database, e.g. created with
 #' \code{\link[DBI]{dbConnect}}. Can be either persistent (disk-backed) or
-#' ephemeral (in-memory). If no conection is provided, then an ephemeral
-#' connection will automatically be created.
+#' ephemeral (in-memory). If no connection is provided, then an ephemeral
+#' connection will be created automatically and closed before the function
+#' exits. Note that a persistent (disk-backed) database connection is
+#' required for larger-than-RAM datasets in order to take advantage of DuckDB's
+#' streaming functionality.
 #' @param table,data,path Mututally exclusive arguments for specifying the data
 #' table (object) to be queried. In order of precedence:
 #' - `table`: Character string giving the name of the data table in an
@@ -31,6 +37,7 @@
 #' 
 #' @importFrom DBI dbConnect dbDisconnect dbGetQuery
 #' @importFrom duckdb duckdb duckdb_register
+#' @importFrom Formula Formula
 #' @importFrom Matrix Diagonal sparse.model.matrix
 #' @importFrom stats reformulate
 #' @importFrom glue glue glue_sql
@@ -74,9 +81,13 @@ duckreg = function(
      }
 
      # vars of interest
-     vars = all.vars(fml)
-     yvar = vars[1]
-     xvars = vars[-1]
+     fml = Formula(fml)
+     yvar = all.vars(formula(fml, lhs = 1, rhs = 0))
+     xvars = all.vars(formula(fml, lhs = 0, rhs = 1))
+     fes = if (length(fml)[2] > 1) all.vars(formula(fml, lhs = 0, rhs = 2)) else NULL
+   #   vars = all.vars(fml)
+   #   yvar = vars[1]
+   #   xvars = vars[-1]
 
      # query string
      query_string = paste0(
@@ -84,7 +95,7 @@ duckreg = function(
         WITH cte AS (
            SELECT
               ",
-         paste(xvars, collapse = ", "), ",
+         paste(c(xvars, fes), collapse = ", "), ",
               COUNT(*) AS n,
               SUM(", yvar, ") as sum_Y,
               SUM(POW(", yvar, ", 2)) as sum_Y_sq,
@@ -103,7 +114,7 @@ duckreg = function(
      compressed_dat = dbGetQuery(conn = conn, query_string)
 
      # design and outcome matrices
-     X = sparse.model.matrix(reformulate(c(xvars)), compressed_dat)
+     X = sparse.model.matrix(reformulate(c(xvars, fes)), compressed_dat)
      Y = compressed_dat[, "mean_Y"]
      Xw = X * compressed_dat[["wts"]]
      Yw = Y * compressed_dat[["wts"]]
@@ -112,7 +123,8 @@ duckreg = function(
      betahat = chol2inv(chol(crossprod(Xw))) %*% crossprod(Xw, Yw)
 
      # standard errors (currently only HC1)
-     if (vcov == tolower("hc1")) {
+     vcov_type = tolower(vcov)
+     if (identical(vcov_type, "hc1")) {
         n = compressed_dat[["n"]]
         yprime = compressed_dat[["sum_Y"]]
         yprimeprime = compressed_dat[["sum_Y_sq"]]
@@ -129,9 +141,33 @@ duckreg = function(
         # grab SEs
         ses = sqrt(diag(vcov))
      }
+     attr(vcov, "type") = vcov_type
 
      # return object
-     ret = cbind(estimate = betahat[, 1], std.error = ses)
+     coeftable = cbind(estimate = betahat[, 1], std.error = ses)
 
-     return(ret)
+     ret = list(
+      fml = fml,
+      coeftable = coeftable,
+      vcov = vcov,
+      xvars = xvars,
+      fes = fes
+     )
+
+     ## Overload class ----
+     class(ret) = c("duckreg", class(ret))
+
+     ret
+}
+
+# print method
+#' @export
+print.duckreg = function(x, fes = FALSE, ...) {
+   ret = x[["coeftable"]]
+   if (!isTRUE(fes)) {
+      xvars = x[["xvars"]]
+      ret = ret[xvars, , drop = FALSE]
+   }
+   print(ret)
+   invisible(ret)
 }
