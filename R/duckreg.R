@@ -31,9 +31,8 @@
 #' covariance correction / standard errors. At present, only "hc1"
 #' (heteroskedasticity-consistent) are supported, which is also thus
 #' the default.
-#' @return A two-column matrix containing the regression results:
-#' - estimates: Point estimates
-#' - std.error: Standard errors
+#' @return A list of class "duckreg" containing various slots, including a table
+#' of coefficients (which the associated print method will display).
 #' 
 #' @importFrom DBI dbConnect dbDisconnect dbGetQuery
 #' @importFrom duckdb duckdb duckdb_register
@@ -51,7 +50,9 @@ duckreg = function(
    table = NULL,
    data = NULL,
    path = NULL,
-   vcov = "hc1"
+   vcov = "hc1",
+   query_only = FALSE,
+   data_only = FALSE
    ) {
 
      if (is.null(conn)) {
@@ -109,9 +110,18 @@ duckreg = function(
            sqrt(n) AS wts
         "
      )
-
+   
+     if (isTRUE(query_only)) return(query_string)
+     
      # fetch data
      compressed_dat = dbGetQuery(conn = conn, query_string)
+
+     for (f in fes) {
+        compressed_dat[[f]] = factor(compressed_dat[[f]])
+     }
+     rm(f)
+     
+     if (isTRUE(data_only)) return(compressed_dat)
 
      # design and outcome matrices
      X = sparse.model.matrix(reformulate(c(xvars, fes)), compressed_dat)
@@ -144,30 +154,33 @@ duckreg = function(
      attr(vcov, "type") = vcov_type
 
      # return object
-     coeftable = cbind(estimate = betahat[, 1], std.error = ses)
+     coefs = betahat[, 1]
+     zvalues = coefs / ses
+     nparams = length(coefs)
+     nobs = nrow(compressed_dat)
+     nobs_orig = sum(compressed_dat$n)
+     pvalues = 2*pt(-abs(zvalues), max(nobs - nparams, 1))
+     coeftable = cbind(
+        estimate = coefs,
+        std.error = ses,
+        statistic = zvalues,
+        p.values = pvalues
+     )
 
      ret = list(
-      fml = fml,
       coeftable = coeftable,
       vcov = vcov,
+      fml = fml,
+      yvar = yvar,
       xvars = xvars,
-      fes = fes
+      fes = fes,
+      query_string = query_string,
+      nobs = nobs,
+      nobs_orig = nobs_orig
      )
 
      ## Overload class ----
      class(ret) = c("duckreg", class(ret))
 
      ret
-}
-
-# print method
-#' @export
-print.duckreg = function(x, fes = FALSE, ...) {
-   ret = x[["coeftable"]]
-   if (!isTRUE(fes)) {
-      xvars = x[["xvars"]]
-      ret = ret[xvars, , drop = FALSE]
-   }
-   print(ret)
-   invisible(ret)
 }
