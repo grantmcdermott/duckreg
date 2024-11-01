@@ -10,5 +10,10 @@ Leverages the power of DuckDB to run regressions on very large datasets, which m
 \author{
 \strong{Maintainer}: Grant McDermott \email{gmcd@amazon.com} (\href{https://orcid.org/0000-0001-7883-8573}{ORCID})
 
+Other contributors:
+\itemize{
+  \item Apoorva Lal \email{lal.apoorva@gmail.com} (\href{https://orcid.org/0000-0002-3697-614X}{ORCID}) [contributor]
+}
+
 }
 \keyword{internal}

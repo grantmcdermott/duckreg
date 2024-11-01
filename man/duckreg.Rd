@@ -7,12 +7,18 @@
 duckreg(fml, conn = NULL, table = NULL, data = NULL, path = NULL, vcov = "hc1")
 }
 \arguments{
-\item{fml}{Model \code{\link[stats]{formula}}.}
+\item{fml}{A \code{\link[stats]{formula}} representing the relation to be
+estimated. Fixed-effects should be included after a pipe, e.g
+\code{fml = y ~ x1 + x2 | fe1 + f2}. Currently, only simple additive terms
+are supported (i.e., no interaction terms, transformations or literals).}
 
 \item{conn}{Connection to a DuckDB database, e.g. created with
 \code{\link[DBI]{dbConnect}}. Can be either persistent (disk-backed) or
-ephemeral (in-memory). If no conection is provided, then an ephemeral
-connection will automatically be created.}
+ephemeral (in-memory). If no connection is provided, then an ephemeral
+connection will be created automatically and closed before the function
+exits. Note that a persistent (disk-backed) database connection is
+required for larger-than-RAM datasets in order to take advantage of DuckDB's
+streaming functionality.}
 
 \item{table, data, path}{Mututally exclusive arguments for specifying the data
 table (object) to be queried. In order of precedence:
