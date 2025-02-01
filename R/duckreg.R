@@ -37,7 +37,7 @@
 #' @importFrom DBI dbConnect dbDisconnect dbGetQuery
 #' @importFrom duckdb duckdb duckdb_register
 #' @importFrom Formula Formula
-#' @importFrom Matrix Diagonal sparse.model.matrix
+#' @importFrom Matrix chol2inv crossprod Diagonal sparse.model.matrix 
 #' @importFrom stats reformulate
 #' @importFrom glue glue glue_sql
 #' 
@@ -54,7 +54,7 @@ duckreg = function(
    query_only = FALSE,
    data_only = FALSE
    ) {
-
+  
      if (is.null(conn)) {
          conn = dbConnect(duckdb(), shutdown = TRUE)
          on.exit(dbDisconnect(conn), add = TRUE)
@@ -89,7 +89,7 @@ duckreg = function(
    #   vars = all.vars(fml)
    #   yvar = vars[1]
    #   xvars = vars[-1]
-
+     
      # query string
      query_string = paste0(
          "
@@ -116,6 +116,7 @@ duckreg = function(
      # fetch data
      compressed_dat = dbGetQuery(conn = conn, query_string)
 
+     # turn FEs into factors
      for (f in fes) {
         compressed_dat[[f]] = factor(compressed_dat[[f]])
      }
