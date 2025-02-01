@@ -18,11 +18,11 @@ Compared to the Python implementation, the functionality of this R version is
 currently limited to compressed regressions only. But we plan to add support for
 Mundlak regression, double-demeaning, etc. in the near future. On the other
 hand, this R version does benefit from a significantly smaller dependency
-footprint (<5 recursive dependencies vs. over 40), enabling faster and simpler
-installs, as well as a lower long-term maintenance burden.[^1] 
-
-[^1]: Remember kids:
-    [_Lightweight is the right weight_](https://www.tinyverse.org/).
+footprint (<5 recursive dependencies vs. over 40), which should hopefully
+enable faster and simpler installs, as well as a lower long-term maintenance
+burden. I've also added some R syntactic sugar, so that you can specify
+regressions using the familiar formula syntax, along with "pretty" print
+methods.
 
 ## Install
 
@@ -35,7 +35,8 @@ remotes::install_github("grantmcdermott/duckreg")
 
 ### Small dataset
 
-To get ourselves situated, we'll first demonstrate by using an in-memory R dataset.
+To get ourselves situated, we'll first demonstrate by using an in-memory R
+dataset.
 
 ``` r
 library(duckreg)
@@ -52,7 +53,11 @@ duckreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
-Confirm that this gives us the same result as the `fixest::feols`:
+Behind the scenes, **duckreg** has compressed the original dataset down from
+nearly 40,000 observations to only 210, before running the final (weighted)
+regression on this much smaller data object. We can can confirm that this
+compression approach still gives us the same result as running `fixest::feols`
+on the full dataset:
 
 ```r
 feols(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
@@ -73,16 +78,17 @@ feols(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 For a more appropriate **duckreg** use-case, let's run a regression on some NYC
 taxi data. (Download instructions
 [here](https://grantmcdermott.com/duckdb-polars/requirements.html).)
-**duckreg** offers two basic ways to interact with and analyse data of this size.
+**duckreg** offers two basic ways to interact with, and analyse, data of this
+size.
 
 #### Option 1: "On-the-fly"
 
 Use the `path` argument to read the data directly from disk and perform the
 compression computation in an ephemeral DuckDB connection. This requires that
-data are small enough to fit into RAM... but please be aware that this is a very
-relative concept. Thanks to DuckDB's incredible efficiency, the "small enough"
-limit covers very large datasets that would otherwise crash your R session, and
-requires only a fraction of the computation time.
+data are small enough to fit into RAM... but please note that "small enough" is
+a very relative concept. Thanks to DuckDB's incredible efficiency, your RAM
+should be able to handle very large datasets that would otherwise crash your R
+session, and require only a fraction of the computation time.
 
 ```r
 duckreg(
@@ -100,8 +106,8 @@ duckreg(
 
 Note the size of the original dataset, which is nearly 180 million rows, versus
 the compressed dataset, which is down to only 70k. On my laptop this regression
-completes in **under 4 seconds**... despite have to read and compress the dataset
-from disk!
+completes in **under 4 seconds**... and that includes the time it took to read
+and compress the data from disk!
 
 #### Option 2: Persistent database
 
@@ -112,7 +118,7 @@ database. This latter approach requires that you specify appropriate `conn` and
 means that you can run regressions against bigger than RAM data, since we will
 automatically take advantage of DuckDB's
 [out-of-core functionality](https://duckdb.org/2024/07/09/memory-management.html) 
-(streaming, has aggregation, etc.).
+(streaming, hash aggregation, etc.).
 
 ```r
 ## Explicitly load the duckdb (and thus also DBI) to create persistent database
