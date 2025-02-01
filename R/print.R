@@ -5,7 +5,7 @@
 print.duckreg = function(x, fes = FALSE, ...) {
     ct = x[["coeftable"]]
     colnames(ct) = c("Estimate", "Std. Error", "t value", "Pr(>|t|)")
-    if (!isTRUE(fes)) {
+    if (!isTRUE(fes) && !is.null(x$fes)) {
         xvars = x[["xvars"]]
         ct = ct[xvars, , drop = FALSE]
     }

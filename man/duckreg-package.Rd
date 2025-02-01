@@ -3,7 +3,7 @@
 \docType{package}
 \name{duckreg-package}
 \alias{duckreg-package}
-\title{duckreg: Run stratified and saturated regressions out-of-memory with DuckDB}
+\title{duckreg: Out-of-Core Regressions With DuckDB}
 \description{
 Leverages the power of DuckDB to run regressions on very large datasets, which may not fit into R's memory. The core procedure follows Wong et al. (2021) \doi{10.48550/arXiv.2102.11297} by reducing ("compressing") the data to a set of summary statistics and then running frequency-weighted least squares on this smaller dataset. Robust standard errors are computed from sufficient statistics, while clustered standard errors are computed using the cluster bootstrap.
 }

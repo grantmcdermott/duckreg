@@ -4,7 +4,16 @@
 \alias{duckreg}
 \title{Run a compressed regression with a DuckDB backend.}
 \usage{
-duckreg(fml, conn = NULL, table = NULL, data = NULL, path = NULL, vcov = "hc1")
+duckreg(
+  fml,
+  conn = NULL,
+  table = NULL,
+  data = NULL,
+  path = NULL,
+  vcov = "hc1",
+  query_only = FALSE,
+  data_only = FALSE
+)
 }
 \arguments{
 \item{fml}{A \code{\link[stats]{formula}} representing the relation to be
@@ -44,11 +53,8 @@ covariance correction / standard errors. At present, only "hc1"
 the default.}
 }
 \value{
-A two-column matrix containing the regression results:
-\itemize{
-\item estimates: Point estimates
-\item std.error: Standard errors
-}
+A list of class "duckreg" containing various slots, including a table
+of coefficients (which the associated print method will display).
 }
 \description{
 Run a compressed regression with a DuckDB backend.
