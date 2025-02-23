@@ -1,6 +1,13 @@
 #' Run a compressed regression with a DuckDB backend.
 #'
 #' @md
+#' @description
+#' Leverages the power of DuckDB to run regressions on very large datasets,
+#' which may not fit into R's memory. The core procedure follows Wong et al.
+#' (2021) by reducing ("compressing") the data to a set of summary statistics
+#' and then running frequency-weighted least squares on this smaller dataset.
+#' Robust standard errors are computed from sufficient statistics.
+#' 
 #' @param fml A \code{\link[stats]{formula}} representing the relation to be
 #' estimated. Fixed-effects should be included after a pipe, e.g
 #' `fml = y ~ x1 + x2 | fe1 + f2`. Currently, only simple additive terms
@@ -31,8 +38,19 @@
 #' covariance correction / standard errors. At present, only "hc1"
 #' (heteroskedasticity-consistent) are supported, which is also thus
 #' the default.
+#' @param query_only Logical indicating whether only the underlying compression
+#'   SQL query should be returned (i.e., no computation will be performed).
+#'   Default is `FALSE`.
+#' @param data_only Logical indicating whether only the compressed dataset
+#'   should be returned (i.e., no regression is run). Default is `FALSE`.
+#' 
 #' @return A list of class "duckreg" containing various slots, including a table
 #' of coefficients (which the associated print method will display).
+#' @references
+#' Wong, J., Forsell, E., Lewis, R., Mao, T., & Wardrop, M. (2021).
+#' \cite{You Only Compress Once: Optimal Data Compression for Estimating Linear Models.} 
+#' arXiv preprint arXiv:2102.11297.
+#' Available: https://doi.org/10.48550/arXiv.2102.11297
 #' 
 #' @importFrom DBI dbConnect dbDisconnect dbGetQuery
 #' @importFrom duckdb duckdb duckdb_register
@@ -42,7 +60,21 @@
 #' @importFrom glue glue glue_sql
 #' 
 #' @examples
-#' 1+1
+#' 
+#' # A not very compelling example using a small in-memory dataset:
+#' (mod = duckreg(Temp ~ Wind | Month, data = airquality))
+#' 
+#' Same result as lm
+#' summary(lm(Temp ~ Wind + factor(Month), data = airquality))
+#' 
+#' # Aside: duckreg's default print method hides the "nuisance" coefficients
+#' # like the intercept and fixed effect(s). But we can grab them if we want.
+#' print(mod, fes = TRUE)
+#' 
+#' # Note: for a more compelling and appropriate use-case, i.e. regression on a
+#' # big (~180 million row) dataset of Hive-partioned parquet files, see the
+#' # package website:
+#' # https://github.com/grantmcdermott/duckreg?tab=readme-ov-file#quickstart
 #' @export
 duckreg = function(
    fml,
@@ -55,6 +87,8 @@ duckreg = function(
    data_only = FALSE
    ) {
   
+     # compress = match.arg(compress) 
+       
      if (is.null(conn)) {
          conn = dbConnect(duckdb(), shutdown = TRUE)
          on.exit(dbDisconnect(conn), add = TRUE)
