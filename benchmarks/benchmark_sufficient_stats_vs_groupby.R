@@ -297,8 +297,8 @@ estimates_summary %>%
     facet_wrap(~ coef + type, scales = "free") +
     labs(
         title = "Comparison of Coefficient Estimates",
-        x = "Average Estimate",
-        y = "Average Estimate"
+        x = "FEOLS",
+        y = "Duckreg"
     ) 
 
 ggsave(
