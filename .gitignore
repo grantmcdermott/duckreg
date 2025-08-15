@@ -74,3 +74,5 @@ vignettes/*.pdf
 *.app
 
 SCRATCH/
+
+.DS_Store

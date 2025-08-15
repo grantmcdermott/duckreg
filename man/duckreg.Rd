@@ -12,84 +12,61 @@ duckreg(
   path = NULL,
   vcov = "hc1",
   query_only = FALSE,
-  data_only = FALSE
+  data_only = FALSE,
+  strategy = c("auto", "group", "moments", "moments_fe"),
+  compression_threshold = 0.001,
+  verbose = TRUE,
+  ridge_rel = 1e-12
 )
 }
 \arguments{
-\item{fml}{A \code{\link[stats]{formula}} representing the relation to be
-estimated. Fixed-effects should be included after a pipe, e.g
-\code{fml = y ~ x1 + x2 | fe1 + f2}. Currently, only simple additive terms
-are supported (i.e., no interaction terms, transformations or literals).}
+\item{fml}{Formula. Use pipe for FEs: y ~ x1 + x2 | fe1 + fe2}
 
-\item{conn}{Connection to a DuckDB database, e.g. created with
-\code{\link[DBI]{dbConnect}}. Can be either persistent (disk-backed) or
-ephemeral (in-memory). If no connection is provided, then an ephemeral
-connection will be created automatically and closed before the function
-exits. Note that a persistent (disk-backed) database connection is
-required for larger-than-RAM datasets in order to take advantage of DuckDB's
-streaming functionality.}
+\item{conn}{DuckDB connection (optional).}
 
-\item{table, data, path}{Mututally exclusive arguments for specifying the data
-table (object) to be queried. In order of precedence:
-\itemize{
-\item \code{table}: Character string giving the name of the data table in an
-existing (open) DuckDB connection.
-\item \code{data}: R dataframe that can be copied over to \code{conn} as a temporary
-table for querying via the DuckDB query engine. Ignored if \code{table} is
-provided.
-\item \code{path}: Character string giving a path to the data file(s) on disk, which
-will be read into \code{conn}. Internally, this string is passed to the \code{FROM}
-query statement, so could (should) include file globbing for
-Hive-partitioned datasets, e.g. \code{"mydata/**/.*parquet"}. For more precision,
-however, it is recommended to pass the desired DuckDB reader function as
-part of this string, e.g. \code{"read_parquet('mydata/**/*.parquet')"};
-note the use of single quotes.
-Ignored if either \code{table} or \code{data} is provided.
-}}
+\item{table}{Character table name already in conn, or tbl_lazy object.}
 
-\item{vcov}{Character string denoting the desired type of variance-
-covariance correction / standard errors. At present, only "hc1"
-(heteroskedasticity-consistent) are supported, which is also thus
-the default.}
+\item{data}{Data frame to register (ignored if table given).}
 
-\item{query_only}{Logical indicating whether only the underlying compression
-SQL query should be returned (i.e., no computation will be performed).
-Default is \code{FALSE}.}
+\item{path}{DuckDB table function or path string.}
 
-\item{data_only}{Logical indicating whether only the compressed dataset
-should be returned (i.e., no regression is run). Default is \code{FALSE}.}
+\item{vcov}{"hc1" or "ols".}
+
+\item{query_only}{Return only SQL (group strategy only).}
+
+\item{data_only}{Return compressed rows (group strategy only).}
+
+\item{strategy}{"auto","group","moments","moments_fe".}
+
+\item{compression_threshold}{Threshold for switching away from group in auto.}
+
+\item{verbose}{Logical diagnostics.}
+
+\item{ridge_rel}{Relative ridge (lambda = ridge_rel * mean(diag(X'X))) if Cholesky fails.}
 }
 \value{
-A list of class "duckreg" containing various slots, including a table
-of coefficients (which the associated print method will display).
+List (class duckreg) with: coeftable, vcov, strategy, compression info, etc.
 }
 \description{
-Leverages the power of DuckDB to run regressions on very large datasets,
-which may not fit into R's memory. The core procedure follows Wong et al.
-(2021) by reducing ("compressing") the data to a set of summary statistics
-and then running frequency-weighted least squares on this smaller dataset.
-Robust standard errors are computed from sufficient statistics.
+Internal strategies:
+\enumerate{
+\item group: GROUP BY regressors (+ fixed effects) -> frequency-weighted rows -> WLS.
+\item moments: Global sufficient statistics (X'X, X'y) (no fixed effects).
+\item moments_fe: One or two-way fixed-effect within (demean/double-demean) + cross-moments.
 }
-\examples{
 
-# A not very compelling example using a small in-memory dataset:
-(mod = duckreg(Temp ~ Wind | Month, data = airquality))
+Auto heuristic:
+\itemize{
+\item If no FEs and (any regressor appears continuous OR estimated compression ratio > compression_threshold) => moments.
+\item If 1-2 FEs and estimated compression ratio high (> max(0.6, compression_threshold)) => moments_fe.
+\item Else group.
+}
 
-Same result as lm
-summary(lm(Temp ~ Wind + factor(Month), data = airquality))
-
-# Aside: duckreg's default print method hides the "nuisance" coefficients
-# like the intercept and fixed effect(s). But we can grab them if we want.
-print(mod, fes = TRUE)
-
-# Note: for a more compelling and appropriate use-case, i.e. regression on a
-# big (~180 million row) dataset of Hive-partioned parquet files, see the
-# package website:
-# https://github.com/grantmcdermott/duckreg?tab=readme-ov-file#quickstart
+Notes:
+\itemize{
+\item Robust HC1: group path computes HC1; moments/moments_fe apply a df correction to classical variance.
+}
 }
 \references{
-Wong, J., Forsell, E., Lewis, R., Mao, T., & Wardrop, M. (2021).
-\cite{You Only Compress Once: Optimal Data Compression for Estimating Linear Models.}
-arXiv preprint arXiv:2102.11297.
-Available: https://doi.org/10.48550/arXiv.2102.11297
+Wong et al. (2021) arXiv:2102.11297
 }
