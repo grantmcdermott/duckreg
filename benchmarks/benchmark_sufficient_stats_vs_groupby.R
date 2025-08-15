@@ -77,8 +77,8 @@ generate_panel_discrete_compressible <- function(N_units, T_periods,
 # Benchmarking code
 # ------------------------------------------
 # Grids
-N_units_grid <- c(1e3, 1e4, 1e5, 1e6, 3e6) # Number of units
-T_periods_grid <- c(10L)
+N_units_grid <- c(1e3, 2e3, 1e4, 1e5, 1e6, 3e6, 8e6) # Number of units
+T_periods_grid <- c(5L)
 rep_grid <- c(100L) # Number of repetitions for more compressible data
 K1 <- 4L # Number of discrete categories for x1
 K2 <- 4L # Number of discrete categories for x2
@@ -93,8 +93,7 @@ n_iters <- 3
 set.seed(123)  # For reproducibility
 for (iter in 1:n_iters) {
     cat(sprintf("Iteration %d/%d\n", iter, n_iters))
-    # Reset counter for each iteration
-    counter <- 0
+    counter <- 0  # Reset counter for each iteration
     for (N_units in N_units_grid) {
         for (T_periods in T_periods_grid) {
             for (rep in rep_grid) {
@@ -123,7 +122,7 @@ for (iter in 1:n_iters) {
                 )["elapsed"]
 
                 # only run "group" if not too many rows 
-                if (nrow(dfc) < 3e6 && nrow(df) < 3e6) {                  
+                if (nrow(dfc) < 3e6) {                  
                     t_orig_comp <- system.time(
                         fit_orig_comp <- duckreg(y ~ x1 + x2 | unit_fe + time_fe,
                             data = dfc %>% dplyr::rename(unit_fe = unit, time_fe = time), 
@@ -134,7 +133,7 @@ for (iter in 1:n_iters) {
                     fit_orig_comp <- NULL
                 }
                 # even lower threshold for non-compressible data
-                if (nrow(dfc) < 3e5 && nrow(df) < 3e5) {                  
+                if (nrow(df) <= 1e4) {                  
                     t_orig_noncomp <- system.time(
                         fit_orig_noncomp <- duckreg(y ~ x1 + x2 | unit_fe + time_fe,
                             data = df %>% dplyr::rename(unit_fe = unit, time_fe = time), 
@@ -168,10 +167,10 @@ for (iter in 1:n_iters) {
                     elapsed_new_noncompressible = t_new_noncomp,
                     elapsed_feols_compressible = t_feols_comp,
                     elapsed_feols_noncompressible = t_feols_noncomp,
-                    x1_feols_compressible = fit_feols_comp$coeftable["x1", "estimate"],
-                    x2_feols_compressible = fit_feols_comp$coeftable["x2", "estimate"],
-                    x1_feols_noncompressible = fit_feols_noncomp$coeftable["x1", "estimate"],
-                    x2_feols_noncompressible = fit_feols_noncomp$coeftable["x2", "estimate"],
+                    x1_feols_compressible = fit_feols_comp$coeftable["x1", "Estimate"],
+                    x2_feols_compressible = fit_feols_comp$coeftable["x2", "Estimate"],
+                    x1_feols_noncompressible = fit_feols_noncomp$coeftable["x1", "Estimate"],
+                    x2_feols_noncompressible = fit_feols_noncomp$coeftable["x2", "Estimate"],
                     x1_orig_compressible = fit_orig_comp$coeftable["x1", "estimate"],
                     x2_orig_compressible = fit_orig_comp$coeftable["x2", "estimate"],
                     x1_new_compressible = fit_new_comp$coeftable["x1", "estimate"],
@@ -183,16 +182,20 @@ for (iter in 1:n_iters) {
                 )
                 rm(dfc, df, fit_orig_comp, fit_new_comp, fit_orig_noncomp, fit_new_noncomp)
                 gc(verbose = FALSE)
-                message(sprintf("Completed %d/%d runs", counter, total))
             }
         }
     }
 }
 
-gc()
+gc() # just in case -- some odd behavior in tests of registering big tables
+
+## --------------------------------------------
+# Processing results
+# --------------------------------------------
+# Combine all results into a single data frame
 benchmark_results <- dplyr::bind_rows(results)
 
-# make table of times to compare
+# Timings
 benchmark_summary <- benchmark_results %>%
     tidyr::pivot_longer(
         cols = c(elapsed_orig_compressible, elapsed_new_compressible,
@@ -216,6 +219,30 @@ benchmark_summary <- benchmark_results %>%
     ) %>%
     arrange(N_units, T_periods, rep, method, type)
 
+# Extract estimates
+estimates_summary <- benchmark_results %>%
+    select(N_units, T_periods, rep,
+           starts_with("x1_"), starts_with("x2_")) %>% 
+    tidyr::pivot_longer(
+        cols = starts_with("x"),
+        names_to = c("coef", "method", "type"),
+        names_pattern = "x(\\d)_(orig|new|feols)_(compressible|noncompressible)",
+        values_to = "estimate"
+    ) %>%
+    mutate(
+        method = recode(method, orig = "Original", new = "New", feols = "FEOLS"),
+        type = recode(type, compressible = "Compressible", noncompressible = "Non-compressible")
+    ) %>%
+    # group_by(N_units, T_periods, rep, coef, method, type) %>%
+    # summarise(
+    #     avg_estimate = mean(estimate),
+    #     .groups = "drop"
+    # ) %>%
+    mutate(
+        nrows = N_units * T_periods
+    ) %>%
+    arrange(N_units, T_periods, rep, coef, method, type)
+
 # -------------------------------------------
 # Plotting 
 # ------------------------------------------- 
@@ -223,7 +250,13 @@ benchmark_summary <- benchmark_results %>%
 benchmark_summary %>%
     mutate(
         avg_time_plot = ifelse(is.na(avg_time), 0, avg_time),
-        label = ifelse(is.na(avg_time), "N/A", sprintf("%.2f", avg_time))
+        label = ifelse(is.na(avg_time), "N/A", sprintf("%.1f", avg_time)),
+        method = case_when(
+            method == "Original" ~ "Group-by",
+            method == "New" ~ "Sufficient Stats",
+            method == "FEOLS" ~ "FEOLS", 
+            TRUE ~ method
+        )
     ) %>%
     ggplot(aes(x = factor(N_units * T_periods),
                          y = avg_time_plot, fill = method)) +
@@ -234,36 +267,42 @@ benchmark_summary %>%
     facet_wrap(~ type, ncol = 1, scale = "free_y") +
     labs(
         title = "Benchmark Results: Original vs New Algorithm",
-        x = "N_units * T_periods",
+        x = "Rows in Table (N_units * T_periods)",
         y = "Average Time (seconds)"
     ) +
-    theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     scale_x_discrete(labels = function(x) format(as.numeric(x), big.mark = ","))
 
-# Scatter to compare the point estimates across methods
-benchmark_results %>%
-    # divide point estimates by the true value
-    mutate(
-        x1_orig_compressible = x1_orig_compressible / beta_true["x1"],
-        x1_new_compressible = x1_new_compressible / beta_true["x1"],
-        x2_orig_compressible = x2_orig_compressible / beta_true["x2"],
-        x2_new_compressible = x2_new_compressible / beta_true["x2"],
-        x1_orig_noncompressible = x1_orig_noncompressible / beta_true["x1"],
-        x1_new_noncompressible = x1_new_noncompressible / beta_true["x1"],
-        x2_orig_noncompressible = x2_orig_noncompressible / beta_true["x2"],
-        x2_new_noncompressible = x2_new_noncompressible / beta_true["x2"]
-    ) %>%
-    ggplot() +
-    geom_point(aes(x = x1_orig_compressible, y = x1_new_compressible)) +
-    geom_point(aes(x = x1_orig_noncompressible, y = x1_new_noncompressible), color = "blue") + 
-    geom_point(aes(x = x2_orig_compressible, y = x2_new_compressible), shape = 1) +
-    geom_point(aes(x = x2_orig_noncompressible, y = x2_new_noncompressible), shape = 1, color = "blue") +
-    geom_abline(slope = 1, intercept = 0, color = "red") +
-    labs(
-        title = "Comparison of x1 Estimates: Original vs New (Compressible)",
-        x = "Original x1 Estimate",
-        y = "New x1 Estimate"
-    ) +
-    theme_minimal()
+ggsave(
+    "./benchmarks/timing_sufficient_stats_vs_groupby.png",
+    plot = last_plot(),
+    width = 10, height = 6, dpi = 300
+)
 
+# Scatter to compare the point estimates across methods
+estimates_summary %>%
+    select(method, estimate, coef, type, N_units, T_periods, rep) %>%
+    tidyr::pivot_wider(
+        names_from = method,
+        values_from = estimate, 
+        values_fn = list
+    ) %>%
+    unnest_longer(c(FEOLS, Original, New)) %>%
+    mutate(coef = if_else(coef == 1, "x1", "x2")) %>%
+    ggplot() + 
+    geom_point(aes(x = FEOLS, y = Original, color = "Group-By")) +
+    geom_point(aes(x = FEOLS, y = New, color = "Sufficient Stats")) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    scale_color_manual(values = c("Group-By" = "blue", "Sufficient Stats" = "red")) +
+    facet_wrap(~ coef + type, scales = "free") +
+    labs(
+        title = "Comparison of Coefficient Estimates",
+        x = "Average Estimate",
+        y = "Average Estimate"
+    ) 
+
+ggsave(
+    "./benchmarks/compare_estimates_compressible.png",
+    plot = last_plot(),
+    width = 8, height = 6, dpi = 300
+)

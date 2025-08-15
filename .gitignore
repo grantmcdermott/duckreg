@@ -76,3 +76,4 @@ vignettes/*.pdf
 SCRATCH/
 
 .DS_Store
+*.png
