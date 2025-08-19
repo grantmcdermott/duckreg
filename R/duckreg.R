@@ -425,7 +425,8 @@ execute_moments_strategy = function(inputs) {
     for (i in seq_along(inputs$xvars)) {
       if (i == 1) next
       for (j in seq_len(i - 1)) {
-        xi = inputs$xvars[i]; xj = inputs$xvars[j]
+        xi = inputs$xvars[i]
+        xj = inputs$xvars[j]
         pair_exprs = c(pair_exprs, glue("SUM({xi}*{xj}) AS sum_{xi}_{xj}"))
       }
     }
@@ -458,7 +459,8 @@ execute_moments_strategy = function(inputs) {
     for (i in seq_along(inputs$xvars)) {
       if (i == 1) next
       for (j in seq_len(i - 1)) {
-        xi = inputs$xvars[i]; xj = inputs$xvars[j]
+        xi = inputs$xvars[i]
+        xj = inputs$xvars[j]
         val = moments_df[[paste0("sum_", xi, "_", xj)]]
         XtX[xi, xj] = XtX[xj, xi] = val
       }
@@ -482,7 +484,8 @@ execute_moments_strategy = function(inputs) {
     attr(vcov_mat, "type") = "hc1"
   } else attr(vcov_mat, "type") = "ols"
 
-  coefs = as.numeric(betahat); names(coefs) = vars_all
+  coefs = as.numeric(betahat)
+  names(coefs) = vars_all
   ses = sqrt(Matrix::diag(vcov_mat))
   tstats = coefs / ses
   pvals = 2 * pt(-abs(tstats), df_res)
@@ -536,7 +539,8 @@ execute_mundlak_strategy = function(inputs) {
       for (i in seq_along(inputs$xvars)) {
         if (i == 1) next
         for (j in seq_len(i - 1)) {
-          xi = inputs$xvars[i]; xj = inputs$xvars[j]
+          xi = inputs$xvars[i]
+          xj = inputs$xvars[j]
           moment_terms = c(moment_terms,
                             sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
         }
@@ -567,7 +571,8 @@ execute_mundlak_strategy = function(inputs) {
     
   } else {
     # Two FE: double demeaning
-    fe1 = inputs$fes[1]; fe2 = inputs$fes[2]
+    fe1 = inputs$fes[1]
+    fe2 = inputs$fes[2]
     all_vars = c(inputs$yvar, inputs$xvars)
 
     unit_means_cols = paste(sprintf("AVG(%s) AS %s_u", all_vars, all_vars), collapse = ", ")
@@ -593,7 +598,8 @@ execute_mundlak_strategy = function(inputs) {
       for (i in seq_along(inputs$xvars)) {
         if (i == 1) next
         for (j in seq_len(i - 1)) {
-          xi = inputs$xvars[i]; xj = inputs$xvars[j]
+          xi = inputs$xvars[i]
+          xj = inputs$xvars[j]
           moment_terms = c(moment_terms,
                             sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
         }
@@ -680,7 +686,8 @@ execute_mundlak_strategy = function(inputs) {
     attr(vcov_mat, "type") = "ols"
   }
 
-  coefs = as.numeric(betahat); names(coefs) = vars_all
+  coefs = as.numeric(betahat)
+  names(coefs) = vars_all
   ses = sqrt(Matrix::diag(vcov_mat))
   tstats = coefs / ses
   pvals = 2 * pt(-abs(tstats), df_res)
