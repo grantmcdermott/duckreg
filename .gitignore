@@ -77,3 +77,6 @@ SCRATCH/
 
 .DS_Store
 *.png
+
+nyc.db
+/.quarto/

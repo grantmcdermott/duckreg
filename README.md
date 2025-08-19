@@ -1,28 +1,20 @@
 # duckreg
 
-Very fast out-of-memory regressions with DuckDB.
+Very fast regressions on big datasets.
 
 ## What
 
-R package that leverages the power of [DuckDB](https://duckdb.org/) to run
-regressions on very large datasets, which may not fit into R's memory.
-The core procedure follows
-[Wong _et al_. (2021)](https://doi.org/10.48550/arXiv.2102.11297)
-by reducing ("compressing") the data to a set of summary statistics and then
-running frequency-weighted least squares on this smaller dataset. Robust
-standard errors are computed from sufficient statistics.
+**duckreg** is an R package that leverages the power of
+[DuckDB](https://duckdb.org/) to run regressions on very large datasets, 
+which may not fit into R's memory. Various acceleration strategies allow for 
+highly efficient computation, while robust standard errors are computed from 
+sufficient statistics.
 
-The **duckreg** package is inspired by, and has similar aims to, the
+The **duckreg** R package is inspired by, and has similar aims to, the
 [Python package of the same name](https://github.com/py-econometrics/duckreg).
-Compared to the Python implementation, the functionality of this R version is
-currently limited to compressed regressions only. But we plan to add support for
-Mundlak regression, double-demeaning, etc. in the near future. On the other
-hand, this R version does benefit from a significantly smaller dependency
-footprint (<5 recursive dependencies vs. over 40), which should hopefully
-enable faster and simpler installs, as well as a lower long-term maintenance
-burden. I've also added some R syntactic sugar, so that you can specify
-regressions using the familiar formula syntax, along with "pretty" print
-methods.
+This implementation offers some idiomatic, R-focused features like a formula
+interface and "pretty" print methods. But the two packages should otherwise
+be very similar.
 
 ## Install
 
@@ -45,6 +37,10 @@ library(fixest)   # for data and comparison
 data("trade", package = "fixest")
 
 duckreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
+#> [duckreg] Estimating compression ratio...
+#> [duckreg] Data has 38,325 rows and 210 unique FE groups.
+#> [duckreg] Using strategy: compress
+#> [duckreg] Executing compress strategy SQL
 #> Compressed OLS estimation, Dep. Var.: Euros 
 #> Observations.: 38,325 (original) | 210 (compressed) 
 #>         Estimate Std. Error t value  Pr(>|t|)    
@@ -55,9 +51,11 @@ duckreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 
 Behind the scenes, **duckreg** has compressed the original dataset down from
 nearly 40,000 observations to only 210, before running the final (weighted)
-regression on this much smaller data object. We can can confirm that this
-compression approach still gives us the same result as running `fixest::feols`
-on the full dataset:
+regression on this much smaller data object. This compression procedure trick
+follows [Wang _et. al. (2021)](https://doi.org/10.48550/arXiv.2102.11297) and
+effectively allows us to compute on a much lighter object, saving time and
+memory. We can can confirm that it still gives the same result as running 
+`fixest::feols` on the full dataset:
 
 ```r
 feols(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
@@ -92,9 +90,14 @@ session, and require only a fraction of the computation time.
 
 ```r
 duckreg(
-    tip_amount ~ fare_amount + passenger_count | month + vendor_name,
-    path = "read_parquet('nyc-taxi/**/*.parquet')" ## path to hive-partitoned dataset
+   tip_amount ~ fare_amount + passenger_count | month + vendor_name,
+   path = "read_parquet('nyc-taxi/**/*.parquet')" ## path to hive-partitoned dataset
 )
+#> [duckreg] Estimating compression ratio...
+#> [duckreg] Data has 178,544,324 rows and 24 unique FE groups.
+#> [duckreg] Using strategy: compress
+#> [duckreg] Executing compress strategy SQL
+#> 
 #> Compressed OLS estimation, Dep. Var.: tip_amount 
 #> Observations.: 178,544,324 (original) | 70,782 (compressed) 
 #>                  Estimate Std. Error  t value  Pr(>|t|)    
@@ -105,9 +108,12 @@ duckreg(
 ```
 
 Note the size of the original dataset, which is nearly 180 million rows, versus
-the compressed dataset, which is down to only 70k. On my laptop this regression
-completes in **under 4 seconds**... and that includes the time it took to read
-and compress the data from disk!
+the compressed dataset, which is down to only 70k. On my laptop (M4 MacBook Pro)
+this regression completes in **under 2 seconds**... and that includes the time
+it took to determine an optimal estimation strategy, as well read the data from
+disk!^[If we skipped the automatic strategy determination by providing an
+explict strategy, then the total computation time drops to
+_less than 1 second_...]
 
 #### Option 2: Persistent database
 
@@ -134,17 +140,22 @@ dbExecute(
    con,
    "
    CREATE TABLE taxi AS
-      FROM read_parquet('~/Documents/Projects/duckdb-polars/nyc-taxi/**/*.parquet')
+      FROM read_parquet('nyc-taxi/**/*.parquet')
       SELECT tip_amount, fare_amount, passenger_count, month, vendor_name
    "
 )
 
 # same result as earlier
 duckreg(
-    tip_amount ~ fare_amount + passenger_count | month + vendor_name,
-    conn = con,    # database connection,
-    table = "taxi" # table name
+   tip_amount ~ fare_amount + passenger_count | month + vendor_name,
+   conn = con,    # database connection,
+   table = "taxi" # table name
 )
+#> [duckreg] Estimating compression ratio...
+#> [duckreg] Data has 178,544,324 rows and 24 unique FE groups.
+#> [duckreg] Using strategy: compress
+#> [duckreg] Executing compress strategy SQL
+#> 
 #> Compressed OLS estimation, Dep. Var.: tip_amount 
 #> Observations.: 178,544,324 (original) | 70,782 (compressed) 
 #>                  Estimate Std. Error  t value  Pr(>|t|)    
