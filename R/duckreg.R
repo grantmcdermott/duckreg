@@ -1,41 +1,87 @@
+
 #' Run a compressed regression with a DuckDB backend.
 #'
 #' @md
 #' @description
-#' Internal strategies:
-#' 1. group: GROUP BY regressors (+ fixed effects) -> frequency-weighted rows -> WLS.
-#' 2. moments: Global sufficient statistics (X'X, X'y) (no fixed effects).
-#' 3. moments_fe: One or two-way fixed-effect within (demean/double-demean) + cross-moments.
-#'
-#' Auto heuristic:
-#' - If no FEs and (any regressor appears continuous OR estimated compression ratio > compression_threshold) => moments.
-#' - If 1-2 FEs and estimated compression ratio high (> max(0.6, compression_threshold)) => moments_fe.
-#' - Else group.
-#'
-#' Notes:
-#' - Robust HC1: group path computes HC1; moments/moments_fe apply a df correction to classical variance.
-#'
-#' @param fml Formula. Use pipe for FEs: y ~ x1 + x2 | fe1 + fe2
-#' @param conn DuckDB connection (optional).
-#' @param table Character table name already in conn, or tbl_lazy object.
-#' @param data Data frame to register (ignored if table given).
-#' @param path DuckDB table function or path string.
-#' @param vcov "hc1" or "ols".
-#' @param query_only Return only SQL (group strategy only).
-#' @param data_only Return compressed rows (group strategy only).
-#' @param strategy "auto","group","moments","moments_fe".
-#' @param compression_threshold Threshold for switching away from group in auto.
-#' @param verbose Logical diagnostics.
+#' Leverages the power of DuckDB to run regressions on very large datasets,
+#' which may not fit into R's memory. The core procedure follows Wong et al.
+#' (2021) by reducing ("compressing") the data to a set of summary statistics
+#' and then running frequency-weighted least squares on this smaller dataset.
+#' Robust standard errors are computed from sufficient statistics.
+#' 
+#' @param fml A \code{\link[stats]{formula}} representing the relation to be
+#' estimated. Fixed-effects should be included after a pipe, e.g
+#' `fml = y ~ x1 + x2 | fe1 + f2`. Currently, only simple additive terms
+#' are supported (i.e., no interaction terms, transformations or literals).
+#' @param conn Connection to a DuckDB database, e.g. created with
+#' \code{\link[DBI]{dbConnect}}. Can be either persistent (disk-backed) or
+#' ephemeral (in-memory). If no connection is provided, then an ephemeral
+#' connection will be created automatically and closed before the function
+#' exits. Note that a persistent (disk-backed) database connection is
+#' required for larger-than-RAM datasets in order to take advantage of DuckDB's
+#' streaming functionality.
+#' @param table,data,path Mututally exclusive arguments for specifying the data
+#' table (object) to be queried. In order of precedence:
+#' - `table`: Character string giving the name of the data table in an
+#' existing (open) DuckDB connection.
+#' - `data`: R dataframe that can be copied over to `conn` as a temporary
+#' table for querying via the DuckDB query engine. Ignored if `table` is
+#' provided.
+#' - `path`: Character string giving a path to the data file(s) on disk, which
+#' will be read into `conn`. Internally, this string is passed to the `FROM`
+#' query statement, so could (should) include file globbing for
+#' Hive-partitioned datasets, e.g. `"mydata/**/.*parquet"`. For more precision,
+#' however, it is recommended to pass the desired DuckDB reader function as
+#' part of this string, e.g. `"read_parquet('mydata/**/*.parquet')"`;
+#' note the use of single quotes.
+#' Ignored if either `table` or `data` is provided. 
+#' @param vcov Character string denoting the desired type of variance-
+#' covariance correction / standard errors. At present, only "hc1"
+#' (heteroskedasticity-consistent) are supported, which is also thus
+#' the default.
+#' @param query_only Logical indicating whether only the underlying compression
+#'   SQL query should be returned (i.e., no computation will be performed).
+#'   Default is `FALSE`.
+#' @param data_only Logical indicating whether only the compressed dataset
+#'   should be returned (i.e., no regression is run). Default is `FALSE`.
+#' @param strategy "auto", "compress", "mundlak"
+#' @param tol Threshold for switching away from "compress" in auto. If the ratio of 
+#' unique values of the covariates and fixed effects to total rows is below this threshold, 
+#' then the "compress" strategy is used.
+#' @param verbose Print progress messages to the console. Defaults to TRUE. 
 #' @param ridge_rel Relative ridge (lambda = ridge_rel * mean(diag(X'X))) if Cholesky fails.
-#'
-#' @return List (class duckreg) with: coeftable, vcov, strategy, compression info, etc.
-#' @references Wong et al. (2021) arXiv:2102.11297
+#' 
+#' @return A list of class "duckreg" containing various slots, including a table
+#' of coefficients (which the associated print method will display).
+#' @references
+#' Wong, J., Forsell, E., Lewis, R., Mao, T., & Wardrop, M. (2021).
+#' \cite{You Only Compress Once: Optimal Data Compression for Estimating Linear Models.} 
+#' arXiv preprint arXiv:2102.11297.
+#' Available: https://doi.org/10.48550/arXiv.2102.11297
+#' 
 #' @importFrom DBI dbConnect dbDisconnect dbGetQuery
 #' @importFrom duckdb duckdb duckdb_register
 #' @importFrom Formula Formula
 #' @importFrom Matrix chol2inv crossprod Diagonal sparse.model.matrix 
 #' @importFrom stats reformulate pt
-#' @importFrom glue glue
+#' @importFrom glue glue glue_sql
+#' 
+#' @examples
+#' 
+#' # A not very compelling example using a small in-memory dataset:
+#' (mod = duckreg(Temp ~ Wind | Month, data = airquality))
+#' 
+#' Same result as lm
+#' summary(lm(Temp ~ Wind + factor(Month), data = airquality))
+#' 
+#' # Aside: duckreg's default print method hides the "nuisance" coefficients
+#' # like the intercept and fixed effect(s). But we can grab them if we want.
+#' print(mod, fes = TRUE)
+#' 
+#' # Note: for a more compelling and appropriate use-case, i.e. regression on a
+#' # big (~180 million row) dataset of Hive-partioned parquet files, see the
+#' # package website:
+#' # https://github.com/grantmcdermott/duckreg?tab=readme-ov-file#quickstart
 #' @export
 duckreg <- function(
   fml,
@@ -46,15 +92,15 @@ duckreg <- function(
   vcov = "hc1",
   query_only = FALSE,
   data_only = FALSE,
-  strategy = c("auto","group","moments","moments_fe"),
-  compression_threshold = 0.001,
+  strategy = c("auto","compress","moments","mundlak"),
+  tol = 0.001,
   verbose = TRUE,
   ridge_rel = 1e-12
 ) {
   # Process and validate inputs
   inputs <- process_duckreg_inputs(
     fml, conn, table, data, path, vcov, strategy, 
-    query_only, data_only, compression_threshold, verbose, ridge_rel
+    query_only, data_only, tol, verbose, ridge_rel
   )
   
   # Choose strategy
@@ -65,10 +111,10 @@ duckreg <- function(
     # sufficient statistics with no fixed effects
         "moments" = execute_moments_strategy(inputs), 
     # one or two-way fixed effects
-        "moments_fe" = execute_moments_fe_strategy(inputs), 
+        "mundlak" = execute_mundlak_strategy(inputs), 
     # group by regressors (+ fixed effects) -> frequency-weighted rows -> WLS
     # best when regressors are discrete and FE groups have many rows per unique value
-        "group" = execute_group_strategy(inputs), 
+        "compress" = execute_compress_strategy(inputs), 
     stop("Unknown strategy: ", chosen_strategy)
   )
   
@@ -79,8 +125,8 @@ duckreg <- function(
 #' Process and validate duckreg inputs
 #' @keywords internal
 process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy, 
-                                  query_only, data_only, compression_threshold, verbose, ridge_rel) {
-  strategy <- match.arg(strategy, c("auto","group","moments","moments_fe"))
+                                  query_only, data_only, tol, verbose, ridge_rel) {
+  strategy <- match.arg(strategy, c("auto","compress","moments","mundlak"))
   vcov_type_req <- tolower(vcov)  # Connection handling
   own_conn <- FALSE
   if (is.null(conn)) {
@@ -157,7 +203,7 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
     strategy = strategy,
     query_only = query_only,
     data_only = data_only,
-    compression_threshold = compression_threshold,
+    tol = tol,
     verbose = verbose,
     ridge_rel = ridge_rel,
     any_continuous = any_continuous,
@@ -219,7 +265,7 @@ choose_strategy <- function(inputs) {
   fes <- inputs$fes
   verbose <- inputs$verbose
   any_continuous <- inputs$any_continuous
-  compression_threshold <- inputs$compression_threshold
+  tol <- inputs$tol
   conn <- inputs$conn
   from_statement <- inputs$from_statement
   xvars <- inputs$xvars
@@ -273,23 +319,23 @@ choose_strategy <- function(inputs) {
   if (strategy == "auto") {
     if (length(fes) == 0) {
       est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
-      if (any_continuous || (!is.na(est_cr) && est_cr > compression_threshold)) {
+      if (any_continuous || (!is.na(est_cr) && est_cr > tol)) {
         chosen_strategy <- "moments"
       } else {
-        chosen_strategy <- "group"
+        chosen_strategy <- "compress"
       }
     } else if (length(fes) %in% c(1, 2)) {  
       est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
-      if (!is.na(est_cr) && est_cr > max(0.6, compression_threshold)) {
-        chosen_strategy <- "moments_fe"
-        if (verbose) message("[duckreg] Auto: selecting moments_fe (estimated compression ratio ",
+      if (!is.na(est_cr) && est_cr > max(0.6, tol)) {
+        chosen_strategy <- "mundlak"
+        if (verbose) message("[duckreg] Auto: selecting mundlak (estimated compression ratio ",
                              sprintf("%.2f", est_cr), ").")
       } else {
-        chosen_strategy <- "group"
+        chosen_strategy <- "compress"
       }
     } else {
       est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
-      chosen_strategy <- "group"
+      chosen_strategy <- "compress"
       if (!is.na(est_cr) && est_cr > 0.8 && verbose) {
         message(sprintf("[duckreg] Auto: high compression ratio (%.4f). Group compression preferred for this FE structure.", est_cr))
       }
@@ -303,12 +349,12 @@ choose_strategy <- function(inputs) {
 
   # Guard unsupported combos
   if (chosen_strategy == "moments" && length(fes) > 0) {
-    if (verbose) message("[duckreg] FE present; moments (no-FE) not applicable. Using group.")
-    chosen_strategy <- "group"
+    if (verbose) message("[duckreg] FE present; moments (no-FE) not applicable. Using compress.")
+    chosen_strategy <- "compress"
   }
-  if (chosen_strategy == "moments_fe" && !(length(fes) %in% c(1, 2))) {
-    if (verbose) message("[duckreg] moments_fe requires one or two FEs. Using group.")
-    chosen_strategy <- "group"
+  if (chosen_strategy == "mundlak" && !(length(fes) %in% c(1, 2))) {
+    if (verbose) message("[duckreg] mundlak requires one or two FEs. Using compress.")
+    chosen_strategy <- "compress"
   }
   
   # Store compression ratio estimate for later use
@@ -417,12 +463,12 @@ execute_moments_strategy <- function(inputs) {
   )
 }
 
-#' Execute moments_fe strategy (1-2 fixed effects)
-#' @keywords internal  
-execute_moments_fe_strategy <- function(inputs) {
-  if (inputs$query_only) stop("query_only unsupported for moments_fe.")
-  if (inputs$data_only) warning("data_only ignored for moments_fe.")
-  
+#' Execute mundlak strategy (1-2 fixed effects)
+#' @keywords internal
+execute_mundlak_strategy <- function(inputs) {
+  if (inputs$query_only) stop("query_only unsupported for mundlak.")
+  if (inputs$data_only) warning("data_only ignored for mundlak.")
+
   if (length(inputs$fes) == 1) {
     # Single FE: simple within-group demeaning
     fe1 <- inputs$fes[1]
@@ -456,7 +502,7 @@ execute_moments_fe_strategy <- function(inputs) {
       }
     }
 
-    moments_fe_sql <- paste0(
+    mundlak_sql <- paste0(
       "WITH base AS (
       SELECT * ", inputs$from_statement, "
       ),
@@ -513,7 +559,7 @@ execute_moments_fe_strategy <- function(inputs) {
       }
     }
 
-    moments_fe_sql <- paste0(
+    mundlak_sql <- paste0(
       "WITH base AS (
       SELECT * ", inputs$from_statement, "
       ),
@@ -546,8 +592,8 @@ execute_moments_fe_strategy <- function(inputs) {
   }
   
   # Execute SQL and build matrices
-  if (inputs$verbose) message("[duckreg] Executing moments_fe SQL")
-  moments_df <- dbGetQuery(inputs$conn, moments_fe_sql)
+  if (inputs$verbose) message("[duckreg] Executing mundlak SQL")
+  moments_df <- dbGetQuery(inputs$conn, mundlak_sql)
   n_total <- moments_df$n_total
   n_fe1 <- moments_df$n_fe1
   n_fe2 <- moments_df$n_fe2
@@ -605,10 +651,10 @@ execute_moments_fe_strategy <- function(inputs) {
     yvar = inputs$yvar,
     xvars = inputs$xvars,
     fes = inputs$fes,
-    query_string = moments_fe_sql,
+    query_string = mundlak_sql,
     nobs = 1L,
     nobs_orig = n_total,
-    strategy = "moments_fe",
+    strategy = "mundlak",
     compression_ratio_est = inputs$compression_ratio_est,
     df_residual = df_res,
     n_fe1 = n_fe1,
@@ -616,9 +662,9 @@ execute_moments_fe_strategy <- function(inputs) {
   )
 }
 
-#' Execute group strategy (groupby compression)
+#' Execute compress strategy (groupby compression)
 #' @keywords internal
-execute_group_strategy <- function(inputs) {
+execute_compress_strategy <- function(inputs) {
   group_cols <- c(inputs$xvars, inputs$fes)
   group_cols_sql <- paste(group_cols, collapse = ", ")
   query_string <- paste0(
@@ -639,8 +685,8 @@ execute_group_strategy <- function(inputs) {
     )
     
   if (inputs$query_only) return(query_string)
-  
-  if (inputs$verbose) message("[duckreg] Executing group SQL")
+
+  if (inputs$verbose) message("[duckreg] Executing compress strategy SQL")
   compressed_dat <- dbGetQuery(inputs$conn, query_string)
   nobs_orig <- sum(compressed_dat$n)
   nobs_comp <- nrow(compressed_dat)
@@ -716,7 +762,7 @@ execute_group_strategy <- function(inputs) {
     query_string = query_string,
     nobs = nobs_comp,
     nobs_orig = nobs_orig,
-    strategy = "group",
+    strategy = "compress",
     compression_ratio = compression_ratio,
     compression_ratio_est = inputs$compression_ratio_est,
     df_residual = max(nobs_orig - length(coefs), 1)

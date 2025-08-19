@@ -113,12 +113,12 @@ for (iter in 1:n_iters) {
                 t_new_comp <- system.time(
                     fit_new_comp <- duckreg(y ~ x1 + x2 | unit_fe + time_fe,
                         data = dfc %>% dplyr::rename(unit_fe = unit, time_fe = time), 
-                        strategy = "moments_fe")
+                        strategy = "mundlak")
                 )["elapsed"]
                 t_new_noncomp <- system.time(
                     fit_new_noncomp <- duckreg(y ~ x1 + x2 | unit_fe + time_fe,
                         data = df %>% dplyr::rename(unit_fe = unit, time_fe = time), 
-                        strategy = "moments_fe")
+                        strategy = "mundlak")
                 )["elapsed"]
 
                 # only run "group" if not too many rows 
@@ -126,7 +126,7 @@ for (iter in 1:n_iters) {
                     t_orig_comp <- system.time(
                         fit_orig_comp <- duckreg(y ~ x1 + x2 | unit_fe + time_fe,
                             data = dfc %>% dplyr::rename(unit_fe = unit, time_fe = time), 
-                            strategy = "group")
+                            strategy = "compress")
                     )["elapsed"]
                 } else {
                     t_orig_comp <- NA
@@ -137,7 +137,7 @@ for (iter in 1:n_iters) {
                     t_orig_noncomp <- system.time(
                         fit_orig_noncomp <- duckreg(y ~ x1 + x2 | unit_fe + time_fe,
                             data = df %>% dplyr::rename(unit_fe = unit, time_fe = time), 
-                            strategy = "group")
+                            strategy = "compress")
                     )["elapsed"]
                 } else {
                     t_orig_noncomp <- NA
