@@ -93,11 +93,21 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
   if (!is.null(table)) {
     if (is.character(table)) {
       # Original behavior: table name
-      from_statement <- glue("FROM {table}")
+      from_statement <- glue::glue("FROM {table}")
     } else if (inherits(table, "tbl_lazy")) {
-      # New behavior: lazy table
-      from_statement <- paste("FROM (", dbplyr::sql_render(table), ") AS lazy_subquery")
-      if (is.null(conn)) conn <- table$src$con  # Extract connection from lazy table    } else {
+      # lazy table: render SQL and try to extract connection
+      rendered_sql <- tryCatch(dbplyr::sql_render(table), error = function(e) NULL)
+      if (is.null(rendered_sql)) stop("Failed to render SQL for provided tbl_lazy.")
+      from_statement <- paste0("FROM (", rendered_sql, ") AS lazy_subquery")
+      if (is.null(conn)) {
+        # try to extract DBI connection from the tbl_lazy (tbl_dbi stores it at src$con)
+        if (!is.null(table$src) && !is.null(table$src$con)) {
+          conn <- table$src$con
+        } else {
+          stop("`conn` is NULL and could not be extracted from the provided tbl_lazy. Provide `conn` explicitly.")
+        }
+      }
+    } else {
       stop("`table` must be character or tbl_lazy object.")
     }
   } else if (!is.null(data)) {
@@ -108,9 +118,9 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
     if (!is.character(path)) stop("`path` must be character.")
     if (!(grepl("^read|^scan", path) && grepl("'", path))) {
       path <- gsub('"', "'", path)
-      from_statement <- glue("FROM '{path}'")
+      from_statement <- glue::glue("FROM '{path}'")
     } else {
-      from_statement <- glue("FROM {path}")
+      from_statement <- glue::glue("FROM {path}")
     }
   } else {
     stop("Provide one of `table`, `data`, or `path`.")
@@ -284,11 +294,11 @@ choose_strategy <- function(inputs) {
         message(sprintf("[duckreg] Auto: high compression ratio (%.4f). Group compression preferred for this FE structure.", est_cr))
       }
     }
+    if (verbose && (strategy !="auto")) {message("Compression ratio: ", ifelse(is.na(est_cr), "unknown", sprintf("%.2f", est_cr)))}
   } else {
     chosen_strategy <- strategy
   }
 
-  if (verbose && (strategy !="auto")) {message("Compression ratio: ", ifelse(is.na(est_cr), "unknown", sprintf("%.2f", est_cr)))}
   if (verbose) {message("[duckreg] Using strategy: ", chosen_strategy)}
 
   # Guard unsupported combos
