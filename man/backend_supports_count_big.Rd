@@ -18,7 +18,7 @@ that supports the `COUNT_BIG` function, such as SQL Server or Azure SQL.
 }
 \examples{
 \dontrun{
-  con <- DBI::dbConnect(odbc::odbc(), ...)
+  con = DBI::dbConnect(odbc::odbc(), ...)
   backend_supports_count_big(con)
 }
 }

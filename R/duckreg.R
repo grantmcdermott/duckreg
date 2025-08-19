@@ -171,7 +171,7 @@ process_duckreg_inputs = function(fml, conn, table, data, path, vcov, strategy,
   vcov_type_req = tolower(vcov)  # Connection handling
   own_conn = FALSE
   if (is.null(conn)) {
-    conn = dbConnect(duckdb::duckdb(), shutdown = TRUE)
+    conn = dbConnect(duckdb(), shutdown = TRUE)
     own_conn = TRUE
    #  on.exit(try(dbDisconnect(conn), silent = TRUE), add = TRUE)
   }
@@ -180,7 +180,7 @@ process_duckreg_inputs = function(fml, conn, table, data, path, vcov, strategy,
   if (!is.null(table)) {
     if (is.character(table)) {
       # Original behavior: table name
-      from_statement = glue::glue("FROM {table}")
+      from_statement = glue("FROM {table}")
     } else if (inherits(table, "tbl_lazy")) {
       # lazy table: render SQL and try to extract connection
       rendered_sql = tryCatch(dbplyr::sql_render(table), error = function(e) NULL)
@@ -199,15 +199,15 @@ process_duckreg_inputs = function(fml, conn, table, data, path, vcov, strategy,
     }
   } else if (!is.null(data)) {
     if (!inherits(data, "data.frame")) stop("`data` must be data.frame.")
-    duckdb::duckdb_register(conn, "tmp_table_duckreg", data)
+    duckdb_register(conn, "tmp_table_duckreg", data)
     from_statement = "FROM tmp_table_duckreg"
   } else if (!is.null(path)) {
     if (!is.character(path)) stop("`path` must be character.")
     if (!(grepl("^read|^scan", path) && grepl("'", path))) {
       path = gsub('"', "'", path)
-      from_statement = glue::glue("FROM '{path}'")
+      from_statement = glue("FROM '{path}'")
     } else {
-      from_statement = glue::glue("FROM {path}")
+      from_statement = glue("FROM {path}")
     }
   } else {
     stop("Provide one of `table`, `data`, or `path`.")
@@ -267,7 +267,7 @@ process_duckreg_inputs = function(fml, conn, table, data, path, vcov, strategy,
 #' }
 #' @export
 backend_supports_count_big = function(conn){
-  info = try(DBI::dbGetInfo(conn), silent = TRUE)
+  info = try(dbGetInfo(conn), silent = TRUE)
   if (inherits(info, "try-error")) return(FALSE)
   dbms = tolower(paste(info$dbms.name, collapse = " "))
   grepl("sql server|azure sql|microsoft sql server", dbms)
@@ -275,7 +275,7 @@ backend_supports_count_big = function(conn){
 
 # detect SQL backend
 detect_backend = function(conn) {
-  info = try(DBI::dbGetInfo(conn), silent = TRUE)
+  info = try(dbGetInfo(conn), silent = TRUE)
   if (inherits(info, "try-error")) return(list(name = "unknown", supports_count_big = FALSE))
   dbms = tolower(paste(info$dbms.name, collapse = " "))
   list(
@@ -288,12 +288,12 @@ detect_backend = function(conn) {
 sql_count = function(conn, alias, expr = "*", distinct = FALSE) {
   bd = detect_backend(conn)
   if (distinct) {
-    glue::glue("{if (bd$supports_count_big) paste0('COUNT_BIG(DISTINCT ', expr, ')') else paste0('CAST(COUNT(DISTINCT ', expr, ') AS BIGINT)')} AS {alias}")
+    glue("{if (bd$supports_count_big) paste0('COUNT_BIG(DISTINCT ', expr, ')') else paste0('CAST(COUNT(DISTINCT ', expr, ') AS BIGINT)')} AS {alias}")
   } else {
     if (bd$supports_count_big) {
-      glue::glue("COUNT_BIG({expr}) AS {alias}")
+      glue("COUNT_BIG({expr}) AS {alias}")
     } else {
-      glue::glue("CAST(COUNT({expr}) AS BIGINT) AS {alias}")
+      glue("CAST(COUNT({expr}) AS BIGINT) AS {alias}")
     }
   }
 }
@@ -324,15 +324,15 @@ choose_strategy = function(inputs) {
     if (!length(key_cols)) return(1)
 
     # Total rows (safe: COUNT(*) is supported pretty much everywhere)
-    total_sql = glue::glue("SELECT CAST(COUNT(*) AS BIGINT) AS n FROM (SELECT * {from_statement}) t")
-    total_n = DBI::dbGetQuery(conn, total_sql)$n
+    total_sql = glue("SELECT CAST(COUNT(*) AS BIGINT) AS n FROM (SELECT * {from_statement}) t")
+    total_n = dbGetQuery(conn, total_sql)$n
 
     # Helper to count distinct tuples (works for single or multi-column)
     count_distinct_tuples = function(cols) {
       cols_expr = paste(cols, collapse = ", ")
       # Use subquery counting distinct tuples (portable and works in DuckDB/SQL Server/etc)
-      sql = glue::glue("SELECT CAST(COUNT(*) AS BIGINT) AS g FROM (SELECT DISTINCT {cols_expr} {from_statement}) t")
-      DBI::dbGetQuery(conn, sql)$g
+      sql = glue("SELECT CAST(COUNT(*) AS BIGINT) AS g FROM (SELECT DISTINCT {cols_expr} {from_statement}) t")
+      dbGetQuery(conn, sql)$g
     }
 
     if (length(fes)) {
