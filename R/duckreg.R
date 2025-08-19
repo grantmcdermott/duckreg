@@ -139,16 +139,16 @@ duckreg = function(
   verbose = TRUE
 ) {
   # Process and validate inputs
-  inputs <- process_duckreg_inputs(
+  inputs = process_duckreg_inputs(
     fml, conn, table, data, path, vcov, strategy, 
     query_only, data_only, threshold, verbose, ridge_rel
   )
   
   # Choose strategy
-  chosen_strategy <- choose_strategy(inputs)
+  chosen_strategy = choose_strategy(inputs)
   
   # Execute chosen strategy
-  result <- switch(chosen_strategy,
+  result = switch(chosen_strategy,
     # sufficient statistics with no fixed effects
         "moments" = execute_moments_strategy(inputs), 
     # one or two-way fixed effects
@@ -165,14 +165,14 @@ duckreg = function(
 
 #' Process and validate duckreg inputs
 #' @keywords internal
-process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy, 
+process_duckreg_inputs = function(fml, conn, table, data, path, vcov, strategy, 
                                   query_only, data_only, threshold, verbose, ridge_rel) {
-  strategy <- match.arg(strategy, c("auto","compress","moments","mundlak"))
-  vcov_type_req <- tolower(vcov)  # Connection handling
-  own_conn <- FALSE
+  strategy = match.arg(strategy, c("auto","compress","moments","mundlak"))
+  vcov_type_req = tolower(vcov)  # Connection handling
+  own_conn = FALSE
   if (is.null(conn)) {
-    conn <- dbConnect(duckdb::duckdb(), shutdown = TRUE)
-    own_conn <- TRUE
+    conn = dbConnect(duckdb::duckdb(), shutdown = TRUE)
+    own_conn = TRUE
    #  on.exit(try(dbDisconnect(conn), silent = TRUE), add = TRUE)
   }
 
@@ -180,16 +180,16 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
   if (!is.null(table)) {
     if (is.character(table)) {
       # Original behavior: table name
-      from_statement <- glue::glue("FROM {table}")
+      from_statement = glue::glue("FROM {table}")
     } else if (inherits(table, "tbl_lazy")) {
       # lazy table: render SQL and try to extract connection
-      rendered_sql <- tryCatch(dbplyr::sql_render(table), error = function(e) NULL)
+      rendered_sql = tryCatch(dbplyr::sql_render(table), error = function(e) NULL)
       if (is.null(rendered_sql)) stop("Failed to render SQL for provided tbl_lazy.")
-      from_statement <- paste0("FROM (", rendered_sql, ") AS lazy_subquery")
+      from_statement = paste0("FROM (", rendered_sql, ") AS lazy_subquery")
       if (is.null(conn)) {
         # try to extract DBI connection from the tbl_lazy (tbl_dbi stores it at src$con)
         if (!is.null(table$src) && !is.null(table$src$con)) {
-          conn <- table$src$con
+          conn = table$src$con
         } else {
           stop("`conn` is NULL and could not be extracted from the provided tbl_lazy. Provide `conn` explicitly.")
         }
@@ -200,37 +200,37 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
   } else if (!is.null(data)) {
     if (!inherits(data, "data.frame")) stop("`data` must be data.frame.")
     duckdb::duckdb_register(conn, "tmp_table_duckreg", data)
-    from_statement <- "FROM tmp_table_duckreg"
+    from_statement = "FROM tmp_table_duckreg"
   } else if (!is.null(path)) {
     if (!is.character(path)) stop("`path` must be character.")
     if (!(grepl("^read|^scan", path) && grepl("'", path))) {
-      path <- gsub('"', "'", path)
-      from_statement <- glue::glue("FROM '{path}'")
+      path = gsub('"', "'", path)
+      from_statement = glue::glue("FROM '{path}'")
     } else {
-      from_statement <- glue::glue("FROM {path}")
+      from_statement = glue::glue("FROM {path}")
     }
   } else {
     stop("Provide one of `table`, `data`, or `path`.")
   }
 
   # Parse formula
-  fml <- Formula(fml)
-  yvar <- all.vars(formula(fml, lhs = 1, rhs = 0))
+  fml = Formula(fml)
+  yvar = all.vars(formula(fml, lhs = 1, rhs = 0))
   if (length(yvar) != 1) stop("Exactly one outcome variable required.")
   
-  xvars <- all.vars(formula(fml, lhs = 0, rhs = 1))
-  fes <- if (length(fml)[2] > 1) all.vars(formula(fml, lhs = 0, rhs = 2)) else NULL
+  xvars = all.vars(formula(fml, lhs = 0, rhs = 1))
+  fes = if (length(fml)[2] > 1) all.vars(formula(fml, lhs = 0, rhs = 2)) else NULL
   if (!length(xvars)) stop("No regressors on RHS.")
 
   # Heuristic for continuous regressors (only if data passed)
-  is_continuous <- function(v) {
+  is_continuous = function(v) {
     if (is.null(data)) return(NA)
-    xv <- data[[v]]
+    xv = data[[v]]
     if (is.integer(xv)) return(FALSE)
     if (is.numeric(xv)) return(length(unique(xv)) > min(50, 0.2 * length(xv)))
     TRUE
   }
-  any_continuous <- if (!is.null(data)) any(vapply(xvars, is_continuous, logical(1))) else FALSE
+  any_continuous = if (!is.null(data)) any(vapply(xvars, is_continuous, logical(1))) else FALSE
 
   list(
     fml = fml,
@@ -262,22 +262,22 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
 #' @return Logical value: `TRUE` if the backend supports `COUNT_BIG`, `FALSE` otherwise.
 #' @examples
 #' \dontrun{
-#'   con <- DBI::dbConnect(odbc::odbc(), ...)
+#'   con = DBI::dbConnect(odbc::odbc(), ...)
 #'   backend_supports_count_big(con)
 #' }
 #' @export
-backend_supports_count_big <- function(conn){
-  info <- try(DBI::dbGetInfo(conn), silent = TRUE)
+backend_supports_count_big = function(conn){
+  info = try(DBI::dbGetInfo(conn), silent = TRUE)
   if (inherits(info, "try-error")) return(FALSE)
-  dbms <- tolower(paste(info$dbms.name, collapse = " "))
+  dbms = tolower(paste(info$dbms.name, collapse = " "))
   grepl("sql server|azure sql|microsoft sql server", dbms)
 }
 
 # detect SQL backend
-detect_backend <- function(conn) {
-  info <- try(DBI::dbGetInfo(conn), silent = TRUE)
+detect_backend = function(conn) {
+  info = try(DBI::dbGetInfo(conn), silent = TRUE)
   if (inherits(info, "try-error")) return(list(name = "unknown", supports_count_big = FALSE))
-  dbms <- tolower(paste(info$dbms.name, collapse = " "))
+  dbms = tolower(paste(info$dbms.name, collapse = " "))
   list(
     name = if (grepl("duckdb", dbms)) "duckdb" else if (grepl("sql server|azure sql|microsoft sql server", dbms)) "sqlserver" else "other",
     supports_count_big = grepl("sql server|azure sql|microsoft sql server", dbms)
@@ -285,8 +285,8 @@ detect_backend <- function(conn) {
 }
 
 # sql_count: returns an expression fragment for use inside SELECT when possible.
-sql_count <- function(conn, alias, expr = "*", distinct = FALSE) {
-  bd <- detect_backend(conn)
+sql_count = function(conn, alias, expr = "*", distinct = FALSE) {
+  bd = detect_backend(conn)
   if (distinct) {
     glue::glue("{if (bd$supports_count_big) paste0('COUNT_BIG(DISTINCT ', expr, ')') else paste0('CAST(COUNT(DISTINCT ', expr, ') AS BIGINT)')} AS {alias}")
   } else {
@@ -300,50 +300,50 @@ sql_count <- function(conn, alias, expr = "*", distinct = FALSE) {
 
 #' Choose regression strategy based on inputs and auto logic
 #' @keywords internal
-choose_strategy <- function(inputs) {
+choose_strategy = function(inputs) {
   # Extract values
-  strategy <- inputs$strategy
-  fes <- inputs$fes
-  verbose <- inputs$verbose
-  any_continuous <- inputs$any_continuous
-  threshold <- inputs$threshold
-  conn <- inputs$conn
-  from_statement <- inputs$from_statement
-  xvars <- inputs$xvars
+  strategy = inputs$strategy
+  fes = inputs$fes
+  verbose = inputs$verbose
+  any_continuous = inputs$any_continuous
+  threshold = inputs$threshold
+  conn = inputs$conn
+  from_statement = inputs$from_statement
+  xvars = inputs$xvars
   
     # Compression ratio estimator
-    estimate_compression <- function(inputs) {
-    conn <- inputs$conn
-    verbose <- inputs$verbose
-    xvars <- inputs$xvars
-    fes <- inputs$fes
-    from_statement <- inputs$from_statement
+    estimate_compression = function(inputs) {
+    conn = inputs$conn
+    verbose = inputs$verbose
+    xvars = inputs$xvars
+    fes = inputs$fes
+    from_statement = inputs$from_statement
 
     if (verbose) message("[duckreg] Estimating compression ratio...")
-    key_cols <- c(xvars, fes)
+    key_cols = c(xvars, fes)
     if (!length(key_cols)) return(1)
 
     # Total rows (safe: COUNT(*) is supported pretty much everywhere)
-    total_sql <- glue::glue("SELECT CAST(COUNT(*) AS BIGINT) AS n FROM (SELECT * {from_statement}) t")
-    total_n <- DBI::dbGetQuery(conn, total_sql)$n
+    total_sql = glue::glue("SELECT CAST(COUNT(*) AS BIGINT) AS n FROM (SELECT * {from_statement}) t")
+    total_n = DBI::dbGetQuery(conn, total_sql)$n
 
     # Helper to count distinct tuples (works for single or multi-column)
-    count_distinct_tuples <- function(cols) {
-      cols_expr <- paste(cols, collapse = ", ")
+    count_distinct_tuples = function(cols) {
+      cols_expr = paste(cols, collapse = ", ")
       # Use subquery counting distinct tuples (portable and works in DuckDB/SQL Server/etc)
-      sql <- glue::glue("SELECT CAST(COUNT(*) AS BIGINT) AS g FROM (SELECT DISTINCT {cols_expr} {from_statement}) t")
+      sql = glue::glue("SELECT CAST(COUNT(*) AS BIGINT) AS g FROM (SELECT DISTINCT {cols_expr} {from_statement}) t")
       DBI::dbGetQuery(conn, sql)$g
     }
 
     if (length(fes)) {
       # count unique FE groups (may be single or multi-column)
-      n_groups_fe <- tryCatch(count_distinct_tuples(fes), error = function(e) NA_integer_)
+      n_groups_fe = tryCatch(count_distinct_tuples(fes), error = function(e) NA_integer_)
     } else {
-      n_groups_fe <- NA_integer_
+      n_groups_fe = NA_integer_
     }
 
     # count unique keys over regressors + FEs (may be multi-column)
-    n_groups_total <- tryCatch(count_distinct_tuples(key_cols), error = function(e) NA_integer_)
+    n_groups_total = tryCatch(count_distinct_tuples(key_cols), error = function(e) NA_integer_)
 
     if (verbose && length(fes) && !is.na(n_groups_fe)) {
       message("[duckreg] Data has ", format(total_n, big.mark = ","), 
@@ -353,37 +353,37 @@ choose_strategy <- function(inputs) {
     n_groups_total / max(total_n, 1)
   }
 
-  chosen_strategy <- strategy
-  est_cr <- NA_real_
+  chosen_strategy = strategy
+  est_cr = NA_real_
 
   # Auto logic
   if (strategy == "auto") {
     if (length(fes) == 0) {
-      est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
+      est_cr = tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
       if (any_continuous || (!is.na(est_cr) && est_cr > threshold)) {
-        chosen_strategy <- "moments"
+        chosen_strategy = "moments"
       } else {
-        chosen_strategy <- "compress"
+        chosen_strategy = "compress"
       }
     } else if (length(fes) %in% c(1, 2)) {  
-      est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
+      est_cr = tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
       if (!is.na(est_cr) && est_cr > max(0.6, threshold)) {
-        chosen_strategy <- "mundlak"
+        chosen_strategy = "mundlak"
         if (verbose) message("[duckreg] Auto: selecting mundlak (estimated compression ratio ",
                              sprintf("%.2f", est_cr), ").")
       } else {
-        chosen_strategy <- "compress"
+        chosen_strategy = "compress"
       }
     } else {
-      est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
-      chosen_strategy <- "compress"
+      est_cr = tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
+      chosen_strategy = "compress"
       if (!is.na(est_cr) && est_cr > 0.8 && verbose) {
         message(sprintf("[duckreg] Auto: high compression ratio (%.4f). Group compression preferred for this FE structure.", est_cr))
       }
     }
     if (verbose && (strategy !="auto")) {message("Compression ratio: ", ifelse(is.na(est_cr), "unknown", sprintf("%.2f", est_cr)))}
   } else {
-    chosen_strategy <- strategy
+    chosen_strategy = strategy
   }
 
   if (verbose) {message("[duckreg] Using strategy: ", chosen_strategy)}
@@ -391,32 +391,32 @@ choose_strategy <- function(inputs) {
   # Guard unsupported combos
   if (chosen_strategy == "moments" && length(fes) > 0) {
     if (verbose) message("[duckreg] FE present; moments (no-FE) not applicable. Using compress.")
-    chosen_strategy <- "compress"
+    chosen_strategy = "compress"
   }
   if (chosen_strategy == "mundlak" && !(length(fes) %in% c(1, 2))) {
     if (verbose) message("[duckreg] mundlak requires one or two FEs. Using compress.")
-    chosen_strategy <- "compress"
+    chosen_strategy = "compress"
   }
   
   # Store compression ratio estimate for later use
-  inputs$compression_ratio_est <- est_cr
+  inputs$compression_ratio_est = est_cr
   
   chosen_strategy
 }
 
 #' Execute moments strategy (no fixed effects)
 #' @keywords internal
-execute_moments_strategy <- function(inputs) {
+execute_moments_strategy = function(inputs) {
   if (inputs$query_only) stop("query_only unsupported for moments.")
   if (inputs$data_only) warning("data_only ignored for moments.")
   
-  pair_exprs <- c(
+  pair_exprs = c(
     "COUNT(*) AS n_total",
     glue("SUM({inputs$yvar}) AS sum_y"),
     glue("SUM({inputs$yvar}*{inputs$yvar}) AS sum_y_sq")
   )
   for (x in inputs$xvars) {
-    pair_exprs <- c(pair_exprs,
+    pair_exprs = c(pair_exprs,
                     glue("SUM({x}) AS sum_{x}"),
                     glue("SUM({x}*{inputs$yvar}) AS sum_{x}_y"),
                     glue("SUM({x}*{x}) AS sum_{x}_{x}"))
@@ -425,68 +425,68 @@ execute_moments_strategy <- function(inputs) {
     for (i in seq_along(inputs$xvars)) {
       if (i == 1) next
       for (j in seq_len(i - 1)) {
-        xi <- inputs$xvars[i]; xj <- inputs$xvars[j]
-        pair_exprs <- c(pair_exprs, glue("SUM({xi}*{xj}) AS sum_{xi}_{xj}"))
+        xi = inputs$xvars[i]; xj = inputs$xvars[j]
+        pair_exprs = c(pair_exprs, glue("SUM({xi}*{xj}) AS sum_{xi}_{xj}"))
       }
     }
   }
-  moments_sql <- paste0(
+  moments_sql = paste0(
     "SELECT\n  ",
     paste(pair_exprs, collapse = ",\n  "),
     "\n", inputs$from_statement
   )
   if (inputs$verbose) {message("[duckreg] Executing moments SQL \n")}
-  moments_df <- dbGetQuery(inputs$conn, moments_sql)
-  n_total <- moments_df$n_total
+  moments_df = dbGetQuery(inputs$conn, moments_sql)
+  n_total = moments_df$n_total
 
-  vars_all <- c("(Intercept)", inputs$xvars)
-  p <- length(vars_all)
-  XtX <- matrix(0, p, p, dimnames = list(vars_all, vars_all))
-  Xty <- matrix(0, p, 1, dimnames = list(vars_all, ""))
+  vars_all = c("(Intercept)", inputs$xvars)
+  p = length(vars_all)
+  XtX = matrix(0, p, p, dimnames = list(vars_all, vars_all))
+  Xty = matrix(0, p, 1, dimnames = list(vars_all, ""))
 
-  XtX["(Intercept)","(Intercept)"] <- n_total
-  Xty["(Intercept)",] <- moments_df$sum_y
+  XtX["(Intercept)","(Intercept)"] = n_total
+  Xty["(Intercept)",] = moments_df$sum_y
   for (x in inputs$xvars) {
-    sx  <- moments_df[[paste0("sum_", x)]]
-    sxx <- moments_df[[paste0("sum_", x, "_", x)]]
-    sxy <- moments_df[[paste0("sum_", x, "_y")]]
-    XtX["(Intercept)", x] <- XtX[x,"(Intercept)"] <- sx
-    XtX[x, x] <- sxx
-    Xty[x,] <- sxy
+    sx  = moments_df[[paste0("sum_", x)]]
+    sxx = moments_df[[paste0("sum_", x, "_", x)]]
+    sxy = moments_df[[paste0("sum_", x, "_y")]]
+    XtX["(Intercept)", x] = XtX[x,"(Intercept)"] = sx
+    XtX[x, x] = sxx
+    Xty[x,] = sxy
   }
   if (length(inputs$xvars) > 1) {
     for (i in seq_along(inputs$xvars)) {
       if (i == 1) next
       for (j in seq_len(i - 1)) {
-        xi <- inputs$xvars[i]; xj <- inputs$xvars[j]
-        val <- moments_df[[paste0("sum_", xi, "_", xj)]]
-        XtX[xi, xj] <- XtX[xj, xi] <- val
+        xi = inputs$xvars[i]; xj = inputs$xvars[j]
+        val = moments_df[[paste0("sum_", xi, "_", xj)]]
+        XtX[xi, xj] = XtX[xj, xi] = val
       }
     }
   }
 
-  Rch <- tryCatch(chol(XtX), error = function(e) {
-    ridge <- inputs$ridge_rel * mean(diag(XtX))
+  Rch = tryCatch(chol(XtX), error = function(e) {
+    ridge = inputs$ridge_rel * mean(diag(XtX))
     chol(XtX + diag(ridge, p))
   })
-  betahat <- backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
-  rownames(betahat) <- vars_all
+  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
+  rownames(betahat) = vars_all
 
-  rss <- as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
-  df_res <- max(n_total - p, 1)
-  sigma2 <- rss / df_res
-  XtX_inv <- chol2inv(Rch)
-  vcov_mat <- sigma2 * XtX_inv
+  rss = as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
+  df_res = max(n_total - p, 1)
+  sigma2 = rss / df_res
+  XtX_inv = chol2inv(Rch)
+  vcov_mat = sigma2 * XtX_inv
   if (inputs$vcov_type_req == "hc1") {
-    vcov_mat <- vcov_mat * (n_total / df_res)
-    attr(vcov_mat, "type") <- "hc1"
-  } else attr(vcov_mat, "type") <- "ols"
+    vcov_mat = vcov_mat * (n_total / df_res)
+    attr(vcov_mat, "type") = "hc1"
+  } else attr(vcov_mat, "type") = "ols"
 
-  coefs <- as.numeric(betahat); names(coefs) <- vars_all
-  ses <- sqrt(Matrix::diag(vcov_mat))
-  tstats <- coefs / ses
-  pvals <- 2 * pt(-abs(tstats), df_res)
-  coeftable <- cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
+  coefs = as.numeric(betahat); names(coefs) = vars_all
+  ses = sqrt(Matrix::diag(vcov_mat))
+  tstats = coefs / ses
+  pvals = 2 * pt(-abs(tstats), df_res)
+  coeftable = cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
 
   list(
     coeftable = coeftable,
@@ -506,29 +506,29 @@ execute_moments_strategy <- function(inputs) {
 
 #' Execute mundlak strategy (1-2 fixed effects)
 #' @keywords internal
-execute_mundlak_strategy <- function(inputs) {
+execute_mundlak_strategy = function(inputs) {
   if (inputs$query_only) stop("query_only unsupported for mundlak.")
   if (inputs$data_only) warning("data_only ignored for mundlak.")
 
   if (length(inputs$fes) == 1) {
     # Single FE: simple within-group demeaning
-    fe1 <- inputs$fes[1]
-    all_vars <- c(inputs$yvar, inputs$xvars)
+    fe1 = inputs$fes[1]
+    all_vars = c(inputs$yvar, inputs$xvars)
     
-    means_cols <- paste(sprintf("AVG(%s) AS %s_mean", all_vars, all_vars), collapse = ", ")
-    tilde_exprs <- paste(
+    means_cols = paste(sprintf("AVG(%s) AS %s_mean", all_vars, all_vars), collapse = ", ")
+    tilde_exprs = paste(
       sprintf("(b.%s - gm.%s_mean) AS %s_tilde", all_vars, all_vars, all_vars),
       collapse = ",\n       "
     )
     
-    moment_terms <- c(
+    moment_terms = c(
       sql_count(inputs$conn, "n_total"),
       sql_count(inputs$conn, "n_fe1", fe1, distinct = TRUE),
       "1 AS n_fe2",
       sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_y_sq", inputs$yvar, inputs$yvar)
     )
     for (x in inputs$xvars) {
-      moment_terms <- c(moment_terms,
+      moment_terms = c(moment_terms,
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, inputs$yvar, x, inputs$yvar),
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, x, x, x))
     }
@@ -536,14 +536,14 @@ execute_mundlak_strategy <- function(inputs) {
       for (i in seq_along(inputs$xvars)) {
         if (i == 1) next
         for (j in seq_len(i - 1)) {
-          xi <- inputs$xvars[i]; xj <- inputs$xvars[j]
-          moment_terms <- c(moment_terms,
+          xi = inputs$xvars[i]; xj = inputs$xvars[j]
+          moment_terms = c(moment_terms,
                             sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
         }
       }
     }
 
-    mundlak_sql <- paste0(
+    mundlak_sql = paste0(
       "WITH base AS (
       SELECT * ", inputs$from_statement, "
       ),
@@ -567,25 +567,25 @@ execute_mundlak_strategy <- function(inputs) {
     
   } else {
     # Two FE: double demeaning
-    fe1 <- inputs$fes[1]; fe2 <- inputs$fes[2]
-    all_vars <- c(inputs$yvar, inputs$xvars)
+    fe1 = inputs$fes[1]; fe2 = inputs$fes[2]
+    all_vars = c(inputs$yvar, inputs$xvars)
 
-    unit_means_cols <- paste(sprintf("AVG(%s) AS %s_u", all_vars, all_vars), collapse = ", ")
-    time_means_cols <- paste(sprintf("AVG(%s) AS %s_t", all_vars, all_vars), collapse = ", ")
-    overall_cols    <- paste(sprintf("AVG(%s) AS %s_o", all_vars, all_vars), collapse = ", ")
-    tilde_exprs <- paste(
+    unit_means_cols = paste(sprintf("AVG(%s) AS %s_u", all_vars, all_vars), collapse = ", ")
+    time_means_cols = paste(sprintf("AVG(%s) AS %s_t", all_vars, all_vars), collapse = ", ")
+    overall_cols    = paste(sprintf("AVG(%s) AS %s_o", all_vars, all_vars), collapse = ", ")
+    tilde_exprs = paste(
       sprintf("(b.%s - um.%s_u - tm.%s_t + o.%s_o) AS %s_tilde", all_vars, all_vars, all_vars, all_vars, all_vars),
       collapse = ",\n       "
     )
 
-    moment_terms <- c(
+    moment_terms = c(
       sql_count(inputs$conn, "n_total"),
       sql_count(inputs$conn, "n_fe1", fe1, distinct = TRUE),
       sql_count(inputs$conn, "n_fe2", fe2, distinct = TRUE),
       sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_y_sq", inputs$yvar, inputs$yvar)
     )
     for (x in inputs$xvars) {
-      moment_terms <- c(moment_terms,
+      moment_terms = c(moment_terms,
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, inputs$yvar, x, inputs$yvar),
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, x, x, x))
     }
@@ -593,14 +593,14 @@ execute_mundlak_strategy <- function(inputs) {
       for (i in seq_along(inputs$xvars)) {
         if (i == 1) next
         for (j in seq_len(i - 1)) {
-          xi <- inputs$xvars[i]; xj <- inputs$xvars[j]
-          moment_terms <- c(moment_terms,
+          xi = inputs$xvars[i]; xj = inputs$xvars[j]
+          moment_terms = c(moment_terms,
                             sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
         }
       }
     }
 
-    mundlak_sql <- paste0(
+    mundlak_sql = paste0(
       "WITH base AS (
       SELECT * ", inputs$from_statement, "
       ),
@@ -634,56 +634,57 @@ execute_mundlak_strategy <- function(inputs) {
   
   # Execute SQL and build matrices
   if (inputs$verbose) message("[duckreg] Executing mundlak SQL")
-  moments_df <- dbGetQuery(inputs$conn, mundlak_sql)
-  n_total <- moments_df$n_total
-  n_fe1 <- moments_df$n_fe1
-  n_fe2 <- moments_df$n_fe2
+  moments_df = dbGetQuery(inputs$conn, mundlak_sql)
+  n_total = moments_df$n_total
+  n_fe1 = moments_df$n_fe1
+  n_fe2 = moments_df$n_fe2
 
-  vars_all <- inputs$xvars  # No intercept for FE models
-  p <- length(vars_all)
-  XtX <- matrix(0, p, p, dimnames = list(vars_all, vars_all))
-  Xty <- matrix(0, p, 1, dimnames = list(vars_all, ""))
+  vars_all = inputs$xvars  # No intercept for FE models
+  p = length(vars_all)
+  XtX = matrix(0, p, p, dimnames = list(vars_all, vars_all))
+  Xty = matrix(0, p, 1, dimnames = list(vars_all, ""))
 
   for (x in inputs$xvars) {
-    XtX[x, x] <- moments_df[[sprintf("sum_%s_%s", x, x)]]
-    Xty[x, ]  <- moments_df[[sprintf("sum_%s_%s", x, inputs$yvar)]]
+    XtX[x, x] = moments_df[[sprintf("sum_%s_%s", x, x)]]
+    Xty[x, ]  = moments_df[[sprintf("sum_%s_%s", x, inputs$yvar)]]
   }
   if (length(inputs$xvars) > 1) {
     for (i in seq_along(inputs$xvars)) {
       if (i == 1) next
       for (j in seq_len(i - 1)) {
-        xi <- inputs$xvars[i]; xj <- inputs$xvars[j]
-        XtX[xi, xj] <- XtX[xj, xi] <- moments_df[[sprintf("sum_%s_%s", xi, xj)]]
+        xi = inputs$xvars[i]
+        xj = inputs$xvars[j]
+        XtX[xi, xj] = XtX[xj, xi] = moments_df[[sprintf("sum_%s_%s", xi, xj)]]
       }
     }
   }
 
-  Rch <- tryCatch(chol(XtX), error = function(e) {
-    ridge <- inputs$ridge_rel * mean(diag(XtX))
+  Rch = tryCatch(chol(XtX), error = function(e) {
+    ridge = inputs$ridge_rel * mean(diag(XtX))
     chol(XtX + diag(ridge, p))
   })
-  betahat <- backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
-  rownames(betahat) <- vars_all
+  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
+  rownames(betahat) = vars_all
 
-  rss <- as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
-  df_fe <- n_fe1 + n_fe2 - 1
-  df_res <- max(n_total - p - df_fe, 1)
-  sigma2 <- rss / df_res
-  XtX_inv <- chol2inv(Rch)
-  vcov_mat <- sigma2 * XtX_inv
+  rss = as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
+  df_fe = n_fe1 + n_fe2 - 1
+  df_res = max(n_total - p - df_fe, 1)
+  sigma2 = rss / df_res
+  XtX_inv = chol2inv(Rch)
+  vcov_mat = sigma2 * XtX_inv
   
   if (inputs$vcov_type_req == "hc1") {
-    vcov_mat <- vcov_mat * (n_total / df_res)
-    attr(vcov_mat, "type") <- "hc1"
+    vcov_mat = vcov_mat * (n_total / df_res)
+    attr(vcov_mat, "type") = "hc1"
   } else {
-    attr(vcov_mat, "type") <- "ols"
+    attr(vcov_mat, "type") = "ols"
   }
 
-  coefs <- as.numeric(betahat); names(coefs) <- vars_all
-  ses <- sqrt(Matrix::diag(vcov_mat))
-  tstats <- coefs / ses
-  pvals <- 2 * pt(-abs(tstats), df_res)
-  coeftable <- cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
+  coefs = as.numeric(betahat); names(coefs) = vars_all
+  ses = sqrt(Matrix::diag(vcov_mat))
+  tstats = coefs / ses
+  pvals = 2 * pt(-abs(tstats), df_res)
+  coeftable = cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
 
   list(
     coeftable = coeftable,
@@ -705,10 +706,10 @@ execute_mundlak_strategy <- function(inputs) {
 
 #' Execute compress strategy (groupby compression)
 #' @keywords internal
-execute_compress_strategy <- function(inputs) {
-  group_cols <- c(inputs$xvars, inputs$fes)
-  group_cols_sql <- paste(group_cols, collapse = ", ")
-  query_string <- paste0(
+execute_compress_strategy = function(inputs) {
+  group_cols = c(inputs$xvars, inputs$fes)
+  group_cols_sql = paste(group_cols, collapse = ", ")
+  query_string = paste0(
     "WITH cte AS (
     SELECT
         ", group_cols_sql, ",
@@ -728,65 +729,66 @@ execute_compress_strategy <- function(inputs) {
   if (inputs$query_only) return(query_string)
 
   if (inputs$verbose) message("[duckreg] Executing compress strategy SQL")
-  compressed_dat <- dbGetQuery(inputs$conn, query_string)
-  nobs_orig <- sum(compressed_dat$n)
-  nobs_comp <- nrow(compressed_dat)
-  compression_ratio <- nobs_comp / max(nobs_orig, 1)
+  compressed_dat = dbGetQuery(inputs$conn, query_string)
+  nobs_orig = sum(compressed_dat$n)
+  nobs_comp = nrow(compressed_dat)
+  compression_ratio = nobs_comp / max(nobs_orig, 1)
   
   if (inputs$verbose && compression_ratio > 0.8) {
     message(sprintf("[duckreg] Warning: compression ineffective (%.1f%% of original rows).",
                     100 * compression_ratio))
   }
 
-  if (length(inputs$fes)) for (f in inputs$fes) compressed_dat[[f]] <- factor(compressed_dat[[f]])
+  if (length(inputs$fes)) for (f in inputs$fes) compressed_dat[[f]] = factor(compressed_dat[[f]])
   if (inputs$data_only) return(compressed_dat)
 
-  X <- sparse.model.matrix(reformulate(c(inputs$xvars, inputs$fes)), compressed_dat)
+  X = sparse.model.matrix(reformulate(c(inputs$xvars, inputs$fes)), compressed_dat)
   if (ncol(X) == 0) stop("Design matrix has zero columns.")
-  Y <- compressed_dat[,"mean_Y"]
-  wts <- compressed_dat[["wts"]]
-  Xw <- X * wts
-  Yw <- Y * wts
-  XtX <- crossprod(Xw)
-  XtY <- crossprod(Xw, Yw)
+  Y = compressed_dat[,"mean_Y"]
+  wts = compressed_dat[["wts"]]
+  Xw = X * wts
+  Yw = Y * wts
+  XtX = crossprod(Xw)
+  XtY = crossprod(Xw, Yw)
 
-  Rch <- tryCatch(chol(XtX), error = function(e) {
-    ridge <- inputs$ridge_rel * mean(diag(XtX))
+  Rch = tryCatch(chol(XtX), error = function(e) {
+    ridge = inputs$ridge_rel * mean(diag(XtX))
     chol(XtX + diag(ridge, ncol(XtX)))
   })
-  betahat <- backsolve(Rch, forwardsolve(Matrix::t(Rch), XtY))
-  if (is.null(dim(betahat))) betahat <- matrix(betahat, ncol = 1)
-  rownames(betahat) <- colnames(X)
-  yhat <- as.numeric(X %*% betahat)
+  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), XtY))
+  if (is.null(dim(betahat))) betahat = matrix(betahat, ncol = 1)
+  rownames(betahat) = colnames(X)
+  yhat = as.numeric(X %*% betahat)
 
   if (inputs$vcov_type_req == "hc1") {
-    n_vec <- compressed_dat$n
-    sum_Y <- compressed_dat$sum_Y
-    sum_Y_sq <- compressed_dat$sum_Y_sq
-    rss_g <- sum_Y_sq - 2 * yhat * sum_Y + n_vec * (yhat^2)
-    XtX_inv <- chol2inv(Rch)
-    meat <- crossprod(X, Diagonal(x = as.numeric(rss_g)) %*% X)
-    df_res <- max(nobs_orig - ncol(X), 1)
-    scale_hc1 <- nobs_orig / df_res
-    vcov_mat <- scale_hc1 * (XtX_inv %*% meat %*% XtX_inv)
-    attr(vcov_mat, "type") <- "hc1"
+    n_vec = compressed_dat$n
+    sum_Y = compressed_dat$sum_Y
+    sum_Y_sq = compressed_dat$sum_Y_sq
+    rss_g = sum_Y_sq - 2 * yhat * sum_Y + n_vec * (yhat^2)
+    XtX_inv = chol2inv(Rch)
+    meat = crossprod(X, Diagonal(x = as.numeric(rss_g)) %*% X)
+    df_res = max(nobs_orig - ncol(X), 1)
+    scale_hc1 = nobs_orig / df_res
+    vcov_mat = scale_hc1 * (XtX_inv %*% meat %*% XtX_inv)
+    attr(vcov_mat, "type") = "hc1"
   } else {
-    sum_Y <- compressed_dat$sum_Y
-    sum_Y_sq <- compressed_dat$sum_Y_sq
-    rss_g <- sum_Y_sq - 2 * yhat * sum_Y + compressed_dat$n * (yhat^2)
-    rss_total <- sum(rss_g)
-    df_res <- max(nobs_orig - ncol(X), 1)
-    sigma2 <- rss_total / df_res
-    XtX_inv <- chol2inv(Rch)
-    vcov_mat <- sigma2 * XtX_inv
-    attr(vcov_mat, "type") <- "ols"
+    sum_Y = compressed_dat$sum_Y
+    sum_Y_sq = compressed_dat$sum_Y_sq
+    rss_g = sum_Y_sq - 2 * yhat * sum_Y + compressed_dat$n * (yhat^2)
+    rss_total = sum(rss_g)
+    df_res = max(nobs_orig - ncol(X), 1)
+    sigma2 = rss_total / df_res
+    XtX_inv = chol2inv(Rch)
+    vcov_mat = sigma2 * XtX_inv
+    attr(vcov_mat, "type") = "ols"
   }
 
-  coefs <- as.numeric(betahat); names(coefs) <- rownames(betahat)
-  ses <- sqrt(Matrix::diag(vcov_mat))
-  tstats <- coefs / ses
-  pvals <- 2 * pt(-abs(tstats), max(nobs_orig - length(coefs), 1))
-  coeftable <- cbind(
+  coefs = as.numeric(betahat)
+  names(coefs) = rownames(betahat)
+  ses = sqrt(Matrix::diag(vcov_mat))
+  tstats = coefs / ses
+  pvals = 2 * pt(-abs(tstats), max(nobs_orig - length(coefs), 1))
+  coeftable = cbind(
     estimate = coefs,
     std.error = ses,
     statistic = tstats,
@@ -812,8 +814,8 @@ execute_compress_strategy <- function(inputs) {
 
 #' Finalize duckreg result object
 #' @keywords internal
-finalize_duckreg_result <- function(result, inputs, chosen_strategy) {
-  result$strategy <- chosen_strategy
-  class(result) <- c("duckreg", class(result))
+finalize_duckreg_result = function(result, inputs, chosen_strategy) {
+  result$strategy = chosen_strategy
+  class(result) = c("duckreg", class(result))
   result
 }
