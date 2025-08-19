@@ -21,12 +21,11 @@ Authors@R:
     )
   )
 Description: Leverages the power of DuckDB to run regressions on very large
-  datasets, which may not fit into R's memory. The core procedure follows Wong
-  et al. (2021) <doi:10.48550/arXiv.2102.11297> by reducing ("compressing") the
-  data to a set of summary statistics and then running frequency-weighted least
-  squares on this smaller dataset. Robust standard errors are computed from
-  sufficient statistics, while clustered standard errors are computed using the
-  cluster bootstrap.
+  datasets, which may not fit into R's memory. Various acceleration
+  strategies---e.g., Wong et al. (2021) <doi:10.48550/arXiv.2102.11297> and
+  Arkhangelsky & Imbens (2024) <https://doi.org/10.1093/restud/rdad089>---allow
+  for highly efficient computation, while robust standard errors are
+  computed from sufficient statistics.
 Imports: 
   DBI,
   duckdb,

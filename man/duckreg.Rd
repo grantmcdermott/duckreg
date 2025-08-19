@@ -2,7 +2,7 @@
 % Please edit documentation in R/duckreg.R
 \name{duckreg}
 \alias{duckreg}
-\title{Run a compressed regression with a DuckDB backend.}
+\title{Run a regression on a DuckDB backend.}
 \usage{
 duckreg(
   fml,
@@ -11,12 +11,12 @@ duckreg(
   data = NULL,
   path = NULL,
   vcov = "hc1",
-  query_only = FALSE,
-  data_only = FALSE,
   strategy = c("auto", "compress", "moments", "mundlak"),
   threshold = 0.001,
-  verbose = TRUE,
-  ridge_rel = 1e-12
+  ridge_rel = 1e-12,
+  query_only = FALSE,
+  data_only = FALSE,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -56,13 +56,6 @@ covariance correction / standard errors. At present, only "hc1"
 (heteroskedasticity-consistent) are supported, which is also thus
 the default.}
 
-\item{query_only}{Logical indicating whether only the underlying compression
-SQL query should be returned (i.e., no computation will be performed).
-Default is \code{FALSE}.}
-
-\item{data_only}{Logical indicating whether only the compressed dataset
-should be returned (i.e., no regression is run). Default is \code{FALSE}.}
-
 \item{strategy}{Character string indicating the preferred acceleration
 strategy. The default \code{"auto"} will pick an optimal strategy based on
 internal heuristics. Users can also override with one of the following
@@ -76,12 +69,19 @@ rows in the dataset. If this ratio is below the given the given threshold
 (default = 0.1\%), then the \code{"compress"} strategy is used, otherwise
 \code{"mundlak"} or \code{"moments"} depending on the number of fixed effects.}
 
-\item{verbose}{Logical. Print progress messages to the console? Defaults to
-\code{TRUE}.}
-
 \item{ridge_rel}{Relative ridge penalty to be used if the default Cholesky
 solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
 \verb{lambda = ridge_rel * mean(diag(X'X))}.}
+
+\item{query_only}{Logical indicating whether only the underlying compression
+SQL query should be returned (i.e., no computation will be performed).
+Default is \code{FALSE}.}
+
+\item{data_only}{Logical indicating whether only the compressed dataset
+should be returned (i.e., no regression is run). Default is \code{FALSE}.}
+
+\item{verbose}{Logical. Print progress messages to the console? Defaults to
+\code{TRUE}.}
 }
 \value{
 A list of class "duckreg" containing various slots, including a table
@@ -90,7 +90,7 @@ of coefficients (which the associated print method will display).
 \description{
 Leverages the power of DuckDB to run regressions on very large datasets,
 which may not fit into R's memory. Various acceleration strategies allow for
-efficient computation, while robust standard errors are computed from
+highly efficient computation, while robust standard errors are computed from
 sufficient statistics.
 }
 \section{Acceleration strategies}{
@@ -99,7 +99,7 @@ sufficient statistics.
 \code{duckreg} offers three primary acceleration (shortcut) strategies:
 \enumerate{
 \item \code{"compress"}: compress the size of data via a \verb{GROUP BY} operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
-\item \code{"moments"}: calculate sufficient statistics using global means ($X'X, X'y$). Limited to cases without fixed effects.
+\item \code{"moments"}: calculate sufficient statistics using global means (\eqn{X'X, X'y}). Limited to cases without fixed effects.
 \item \code{"mundlak"}: as per \code{"moments"}, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
 }
 
@@ -117,9 +117,9 @@ If the user does not specify an explicit acceleration strategy, then
 some additional overhead, but in most cases should be negligible next to the
 overall time savings. The heuristic is as follows:
 \itemize{
-\item IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) => \code{"moments"}.
-\item ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) => \code{"mundlak"}.
-\item ELSE => \code{"compress"}.
+\item IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) THEN \code{"moments"}.
+\item ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) THEN \code{"mundlak"}.
+\item ELSE THEN \code{"compress"}.
 }
 }
 

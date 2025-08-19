@@ -1,11 +1,11 @@
 
-#' Run a compressed regression with a DuckDB backend.
+#' Run a regression on a DuckDB backend.
 #'
 #' @md
 #' @description
 #' Leverages the power of DuckDB to run regressions on very large datasets,
 #' which may not fit into R's memory. Various acceleration strategies allow for
-#' efficient computation, while robust standard errors are computed from
+#' highly efficient computation, while robust standard errors are computed from
 #' sufficient statistics.
 #' 
 #' @param fml A \code{\link[stats]{formula}} representing the relation to be
@@ -38,11 +38,6 @@
 #' covariance correction / standard errors. At present, only "hc1"
 #' (heteroskedasticity-consistent) are supported, which is also thus
 #' the default.
-#' @param query_only Logical indicating whether only the underlying compression
-#'   SQL query should be returned (i.e., no computation will be performed).
-#'   Default is `FALSE`.
-#' @param data_only Logical indicating whether only the compressed dataset
-#'   should be returned (i.e., no regression is run). Default is `FALSE`.
 #' @param strategy Character string indicating the preferred acceleration
 #'   strategy. The default `"auto"` will pick an optimal strategy based on
 #'   internal heuristics. Users can also override with one of the following
@@ -54,11 +49,16 @@
 #'   rows in the dataset. If this ratio is below the given the given threshold
 #'   (default = 0.1%), then the `"compress"` strategy is used, otherwise
 #'   `"mundlak"` or `"moments"` depending on the number of fixed effects. 
-#' @param verbose Logical. Print progress messages to the console? Defaults to
-#'   `TRUE`. 
 #' @param ridge_rel Relative ridge penalty to be used if the default Cholesky
 #'   solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
 #'   `lambda = ridge_rel * mean(diag(X'X))`.
+#' @param query_only Logical indicating whether only the underlying compression
+#'   SQL query should be returned (i.e., no computation will be performed).
+#'   Default is `FALSE`.
+#' @param data_only Logical indicating whether only the compressed dataset
+#'   should be returned (i.e., no regression is run). Default is `FALSE`.
+#' @param verbose Logical. Print progress messages to the console? Defaults to
+#'   `TRUE`. 
 #' 
 #' @return A list of class "duckreg" containing various slots, including a table
 #' of coefficients (which the associated print method will display).
@@ -68,7 +68,7 @@
 #' `duckreg` offers three primary acceleration (shortcut) strategies:
 #' 
 #' 1. `"compress"`: compress the size of data via a `GROUP BY` operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
-#' 2. `"moments"`: calculate sufficient statistics using global means ($X'X, X'y$). Limited to cases without fixed effects.
+#' 2. `"moments"`: calculate sufficient statistics using global means (\eqn{X'X, X'y}). Limited to cases without fixed effects.
 #' 3. `"mundlak"`: as per `"moments"`, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
 #' 
 #' The relative efficiency of each of these strategies depends on the size and
@@ -85,9 +85,9 @@
 #' some additional overhead, but in most cases should be negligible next to the
 #' overall time savings. The heuristic is as follows:
 #' 
-#' - IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) => `"moments"`.
-#' - ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) => `"mundlak"`.
-#' - ELSE => `"compress"`.
+#' - IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) THEN `"moments"`.
+#' - ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) THEN `"mundlak"`.
+#' - ELSE THEN `"compress"`.
 #' 
 #' @references
 #' Arkhangelsky, D. & Imbens, G. (2024)
@@ -131,12 +131,12 @@ duckreg = function(
   data = NULL,
   path = NULL,
   vcov = "hc1",
-  query_only = FALSE,
-  data_only = FALSE,
   strategy = c("auto","compress","moments","mundlak"),
   threshold = 0.001,
-  verbose = TRUE,
-  ridge_rel = 1e-12
+  ridge_rel = 1e-12,
+  query_only = FALSE,
+  data_only = FALSE,
+  verbose = TRUE
 ) {
   # Process and validate inputs
   inputs <- process_duckreg_inputs(
