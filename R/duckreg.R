@@ -495,7 +495,7 @@ execute_moments_fe_strategy <- function(inputs) {
       sql_count(inputs$conn, "n_total"),
       sql_count(inputs$conn, "n_fe1", fe1, distinct = TRUE),
       sql_count(inputs$conn, "n_fe2", fe2, distinct = TRUE),
-      sprintf("SUM(CAST(%s_tilde AS DOUBLE) * CAST(%s_tilde AS DOUBLE)) AS sum_y_sq", inputs$yvar, inputs$yvar)
+      sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_y_sq", inputs$yvar, inputs$yvar)
     )
     for (x in inputs$xvars) {
       moment_terms <- c(moment_terms,
