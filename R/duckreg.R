@@ -4,10 +4,9 @@
 #' @md
 #' @description
 #' Leverages the power of DuckDB to run regressions on very large datasets,
-#' which may not fit into R's memory. The core procedure follows Wong et al.
-#' (2021) by reducing ("compressing") the data to a set of summary statistics
-#' and then running frequency-weighted least squares on this smaller dataset.
-#' Robust standard errors are computed from sufficient statistics.
+#' which may not fit into R's memory. Various acceleration strategies allow for
+#' efficient computation, while robust standard errors are computed from
+#' sufficient statistics.
 #' 
 #' @param fml A \code{\link[stats]{formula}} representing the relation to be
 #' estimated. Fixed-effects should be included after a pipe, e.g
@@ -44,16 +43,58 @@
 #'   Default is `FALSE`.
 #' @param data_only Logical indicating whether only the compressed dataset
 #'   should be returned (i.e., no regression is run). Default is `FALSE`.
-#' @param strategy "auto", "compress", "mundlak"
-#' @param tol Threshold for switching away from "compress" in auto. If the ratio of 
-#' unique values of the covariates and fixed effects to total rows is below this threshold, 
-#' then the "compress" strategy is used.
-#' @param verbose Print progress messages to the console. Defaults to TRUE. 
-#' @param ridge_rel Relative ridge (lambda = ridge_rel * mean(diag(X'X))) if Cholesky fails.
+#' @param strategy Character string indicating the preferred acceleration
+#'   strategy. The default `"auto"` will pick an optimal strategy based on
+#'   internal heuristics. Users can also override with one of the following
+#'   explicit strategies: `"compress"`, `"mundlak"`, or `"moments"`. See
+#'   the Acceleration Strategies section below for details.
+#' @param threshold Numeric. Threshold for determining the acceleration
+#'   `strategy` under the default `"auto"` option. Maps to the ratio between
+#'   (a) unique values of combined covariates and fixed effects, and (b) total
+#'   rows in the dataset. If this ratio is below the given the given threshold
+#'   (default = 0.1%), then the `"compress"` strategy is used, otherwise
+#'   `"mundlak"` or `"moments"` depending on the number of fixed effects. 
+#' @param verbose Logical. Print progress messages to the console? Defaults to
+#'   `TRUE`. 
+#' @param ridge_rel Relative ridge penalty to be used if the default Cholesky
+#'   solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
+#'   `lambda = ridge_rel * mean(diag(X'X))`.
 #' 
 #' @return A list of class "duckreg" containing various slots, including a table
 #' of coefficients (which the associated print method will display).
+#' 
+#' @section Acceleration strategies:
+#' 
+#' `duckreg` offers three primary acceleration (shortcut) strategies:
+#' 
+#' 1. `"compress"`: compress the size of data via a `GROUP BY` operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
+#' 2. `"moments"`: calculate sufficient statistics using global means ($X'X, X'y$). Limited to cases without fixed effects.
+#' 3. `"mundlak"`: as per `"moments"`, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
+#' 
+#' The relative efficiency of each of these strategies depends on the size and
+#' structure of the data, as well the number of unique regressors and
+#' fixed-effects. While the compression approach can yield remarkable
+#' performance gains for "standard" cases, it is less efficient for a true panel
+#' (repeated cross-sections over time), where N >> T. In such cases, it is more
+#' efficient to use a Mundlak-type representation that subtracts group means
+#' first. (Reason: unit and time fixed effects are typically high dimensional, 
+#' but covariate averages are not.)
+#' 
+#' If the user does not specify an explicit acceleration strategy, then
+#' `duckreg` will invoke an `"auto"` heuristic behind the scenes. This requires
+#' some additional overhead, but in most cases should be negligible next to the
+#' overall time savings. The heuristic is as follows:
+#' 
+#' - IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) => `"moments"`.
+#' - ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) => `"mundlak"`.
+#' - ELSE => `"compress"`.
+#' 
 #' @references
+#' Arkhangelsky, D. & Imbens, G. (2024)
+#' \cite{Fixed Effects and the Generalized Mundlak Estimator}.
+#' The Review of Economic Studies, 91(5), pp. 2545–2571.
+#' Available: https://doi.org/10.1093/restud/rdad089
+#' 
 #' Wong, J., Forsell, E., Lewis, R., Mao, T., & Wardrop, M. (2021).
 #' \cite{You Only Compress Once: Optimal Data Compression for Estimating Linear Models.} 
 #' arXiv preprint arXiv:2102.11297.
@@ -83,7 +124,7 @@
 #' # package website:
 #' # https://github.com/grantmcdermott/duckreg?tab=readme-ov-file#quickstart
 #' @export
-duckreg <- function(
+duckreg = function(
   fml,
   conn = NULL,
   table = NULL,
@@ -93,14 +134,14 @@ duckreg <- function(
   query_only = FALSE,
   data_only = FALSE,
   strategy = c("auto","compress","moments","mundlak"),
-  tol = 0.001,
+  threshold = 0.001,
   verbose = TRUE,
   ridge_rel = 1e-12
 ) {
   # Process and validate inputs
   inputs <- process_duckreg_inputs(
     fml, conn, table, data, path, vcov, strategy, 
-    query_only, data_only, tol, verbose, ridge_rel
+    query_only, data_only, threshold, verbose, ridge_rel
   )
   
   # Choose strategy
@@ -125,7 +166,7 @@ duckreg <- function(
 #' Process and validate duckreg inputs
 #' @keywords internal
 process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy, 
-                                  query_only, data_only, tol, verbose, ridge_rel) {
+                                  query_only, data_only, threshold, verbose, ridge_rel) {
   strategy <- match.arg(strategy, c("auto","compress","moments","mundlak"))
   vcov_type_req <- tolower(vcov)  # Connection handling
   own_conn <- FALSE
@@ -203,7 +244,7 @@ process_duckreg_inputs <- function(fml, conn, table, data, path, vcov, strategy,
     strategy = strategy,
     query_only = query_only,
     data_only = data_only,
-    tol = tol,
+    threshold = threshold,
     verbose = verbose,
     ridge_rel = ridge_rel,
     any_continuous = any_continuous,
@@ -265,7 +306,7 @@ choose_strategy <- function(inputs) {
   fes <- inputs$fes
   verbose <- inputs$verbose
   any_continuous <- inputs$any_continuous
-  tol <- inputs$tol
+  threshold <- inputs$threshold
   conn <- inputs$conn
   from_statement <- inputs$from_statement
   xvars <- inputs$xvars
@@ -319,14 +360,14 @@ choose_strategy <- function(inputs) {
   if (strategy == "auto") {
     if (length(fes) == 0) {
       est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
-      if (any_continuous || (!is.na(est_cr) && est_cr > tol)) {
+      if (any_continuous || (!is.na(est_cr) && est_cr > threshold)) {
         chosen_strategy <- "moments"
       } else {
         chosen_strategy <- "compress"
       }
     } else if (length(fes) %in% c(1, 2)) {  
       est_cr <- tryCatch(estimate_compression(inputs), error = function(e) NA_real_)
-      if (!is.na(est_cr) && est_cr > max(0.6, tol)) {
+      if (!is.na(est_cr) && est_cr > max(0.6, threshold)) {
         chosen_strategy <- "mundlak"
         if (verbose) message("[duckreg] Auto: selecting mundlak (estimated compression ratio ",
                              sprintf("%.2f", est_cr), ").")

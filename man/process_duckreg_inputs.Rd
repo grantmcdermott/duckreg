@@ -14,7 +14,7 @@ process_duckreg_inputs(
   strategy,
   query_only,
   data_only,
-  compression_threshold,
+  threshold,
   verbose,
   ridge_rel
 )

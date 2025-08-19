@@ -38,7 +38,7 @@ remotes::install_github("grantmcdermott/duckreg")
 To get ourselves situated, we'll first demonstrate by using an in-memory R
 dataset.
 
-``` r
+```r
 library(duckreg)
 library(fixest)   # for data and comparison
 

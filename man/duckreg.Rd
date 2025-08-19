@@ -13,60 +13,141 @@ duckreg(
   vcov = "hc1",
   query_only = FALSE,
   data_only = FALSE,
-  strategy = c("auto", "group", "moments", "moments_fe"),
-  compression_threshold = 0.001,
+  strategy = c("auto", "compress", "moments", "mundlak"),
+  threshold = 0.001,
   verbose = TRUE,
   ridge_rel = 1e-12
 )
 }
 \arguments{
-\item{fml}{Formula. Use pipe for FEs: y ~ x1 + x2 | fe1 + fe2}
+\item{fml}{A \code{\link[stats]{formula}} representing the relation to be
+estimated. Fixed-effects should be included after a pipe, e.g
+\code{fml = y ~ x1 + x2 | fe1 + f2}. Currently, only simple additive terms
+are supported (i.e., no interaction terms, transformations or literals).}
 
-\item{conn}{DuckDB connection (optional).}
+\item{conn}{Connection to a DuckDB database, e.g. created with
+\code{\link[DBI]{dbConnect}}. Can be either persistent (disk-backed) or
+ephemeral (in-memory). If no connection is provided, then an ephemeral
+connection will be created automatically and closed before the function
+exits. Note that a persistent (disk-backed) database connection is
+required for larger-than-RAM datasets in order to take advantage of DuckDB's
+streaming functionality.}
 
-\item{table}{Character table name already in conn, or tbl_lazy object.}
+\item{table, data, path}{Mututally exclusive arguments for specifying the data
+table (object) to be queried. In order of precedence:
+\itemize{
+\item \code{table}: Character string giving the name of the data table in an
+existing (open) DuckDB connection.
+\item \code{data}: R dataframe that can be copied over to \code{conn} as a temporary
+table for querying via the DuckDB query engine. Ignored if \code{table} is
+provided.
+\item \code{path}: Character string giving a path to the data file(s) on disk, which
+will be read into \code{conn}. Internally, this string is passed to the \code{FROM}
+query statement, so could (should) include file globbing for
+Hive-partitioned datasets, e.g. \code{"mydata/**/.*parquet"}. For more precision,
+however, it is recommended to pass the desired DuckDB reader function as
+part of this string, e.g. \code{"read_parquet('mydata/**/*.parquet')"};
+note the use of single quotes.
+Ignored if either \code{table} or \code{data} is provided.
+}}
 
-\item{data}{Data frame to register (ignored if table given).}
+\item{vcov}{Character string denoting the desired type of variance-
+covariance correction / standard errors. At present, only "hc1"
+(heteroskedasticity-consistent) are supported, which is also thus
+the default.}
 
-\item{path}{DuckDB table function or path string.}
+\item{query_only}{Logical indicating whether only the underlying compression
+SQL query should be returned (i.e., no computation will be performed).
+Default is \code{FALSE}.}
 
-\item{vcov}{"hc1" or "ols".}
+\item{data_only}{Logical indicating whether only the compressed dataset
+should be returned (i.e., no regression is run). Default is \code{FALSE}.}
 
-\item{query_only}{Return only SQL (group strategy only).}
+\item{strategy}{Character string indicating the preferred acceleration
+strategy. The default \code{"auto"} will pick an optimal strategy based on
+internal heuristics. Users can also override with one of the following
+explicit strategies: \code{"compress"}, \code{"mundlak"}, or \code{"moments"}. See
+the Acceleration Strategies section below for details.}
 
-\item{data_only}{Return compressed rows (group strategy only).}
+\item{threshold}{Numeric. Threshold for determining the acceleration
+\code{strategy} under the default \code{"auto"} option. Maps to the ratio between
+(a) unique values of combined covariates and fixed effects, and (b) total
+rows in the dataset. If this ratio is below the given the given threshold
+(default = 0.1\%), then the \code{"compress"} strategy is used, otherwise
+\code{"mundlak"} or \code{"moments"} depending on the number of fixed effects.}
 
-\item{strategy}{"auto","group","moments","moments_fe".}
+\item{verbose}{Logical. Print progress messages to the console? Defaults to
+\code{TRUE}.}
 
-\item{compression_threshold}{Threshold for switching away from group in auto.}
-
-\item{verbose}{Logical diagnostics.}
-
-\item{ridge_rel}{Relative ridge (lambda = ridge_rel * mean(diag(X'X))) if Cholesky fails.}
+\item{ridge_rel}{Relative ridge penalty to be used if the default Cholesky
+solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
+\verb{lambda = ridge_rel * mean(diag(X'X))}.}
 }
 \value{
-List (class duckreg) with: coeftable, vcov, strategy, compression info, etc.
+A list of class "duckreg" containing various slots, including a table
+of coefficients (which the associated print method will display).
 }
 \description{
-Internal strategies:
+Leverages the power of DuckDB to run regressions on very large datasets,
+which may not fit into R's memory. Various acceleration strategies allow for
+efficient computation, while robust standard errors are computed from
+sufficient statistics.
+}
+\section{Acceleration strategies}{
+
+
+\code{duckreg} offers three primary acceleration (shortcut) strategies:
 \enumerate{
-\item group: GROUP BY regressors (+ fixed effects) -> frequency-weighted rows -> WLS.
-\item moments: Global sufficient statistics (X'X, X'y) (no fixed effects).
-\item moments_fe: One or two-way fixed-effect within (demean/double-demean) + cross-moments.
+\item \code{"compress"}: compress the size of data via a \verb{GROUP BY} operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
+\item \code{"moments"}: calculate sufficient statistics using global means ($X'X, X'y$). Limited to cases without fixed effects.
+\item \code{"mundlak"}: as per \code{"moments"}, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
 }
 
-Auto heuristic:
+The relative efficiency of each of these strategies depends on the size and
+structure of the data, as well the number of unique regressors and
+fixed-effects. While the compression approach can yield remarkable
+performance gains for "standard" cases, it is less efficient for a true panel
+(repeated cross-sections over time), where N >> T. In such cases, it is more
+efficient to use a Mundlak-type representation that subtracts group means
+first. (Reason: unit and time fixed effects are typically high dimensional,
+but covariate averages are not.)
+
+If the user does not specify an explicit acceleration strategy, then
+\code{duckreg} will invoke an \code{"auto"} heuristic behind the scenes. This requires
+some additional overhead, but in most cases should be negligible next to the
+overall time savings. The heuristic is as follows:
 \itemize{
-\item If no FEs and (any regressor appears continuous OR estimated compression ratio > compression_threshold) => moments.
-\item If 1-2 FEs and estimated compression ratio high (> max(0.6, compression_threshold)) => moments_fe.
-\item Else group.
+\item IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) => \code{"moments"}.
+\item ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) => \code{"mundlak"}.
+\item ELSE => \code{"compress"}.
+}
 }
 
-Notes:
-\itemize{
-\item Robust HC1: group path computes HC1; moments/moments_fe apply a df correction to classical variance.
-}
+\examples{
+
+# A not very compelling example using a small in-memory dataset:
+(mod = duckreg(Temp ~ Wind | Month, data = airquality))
+
+Same result as lm
+summary(lm(Temp ~ Wind + factor(Month), data = airquality))
+
+# Aside: duckreg's default print method hides the "nuisance" coefficients
+# like the intercept and fixed effect(s). But we can grab them if we want.
+print(mod, fes = TRUE)
+
+# Note: for a more compelling and appropriate use-case, i.e. regression on a
+# big (~180 million row) dataset of Hive-partioned parquet files, see the
+# package website:
+# https://github.com/grantmcdermott/duckreg?tab=readme-ov-file#quickstart
 }
 \references{
-Wong et al. (2021) arXiv:2102.11297
+Arkhangelsky, D. & Imbens, G. (2024)
+\cite{Fixed Effects and the Generalized Mundlak Estimator}.
+The Review of Economic Studies, 91(5), pp. 2545–2571.
+Available: https://doi.org/10.1093/restud/rdad089
+
+Wong, J., Forsell, E., Lewis, R., Mao, T., & Wardrop, M. (2021).
+\cite{You Only Compress Once: Optimal Data Compression for Estimating Linear Models.}
+arXiv preprint arXiv:2102.11297.
+Available: https://doi.org/10.48550/arXiv.2102.11297
 }
