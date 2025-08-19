@@ -104,7 +104,7 @@
 #' @importFrom duckdb duckdb duckdb_register
 #' @importFrom Formula Formula
 #' @importFrom Matrix chol2inv crossprod Diagonal sparse.model.matrix 
-#' @importFrom stats reformulate pt
+#' @importFrom stats formula reformulate pt
 #' @importFrom glue glue glue_sql
 #' 
 #' @examples
@@ -112,7 +112,7 @@
 #' # A not very compelling example using a small in-memory dataset:
 #' (mod = duckreg(Temp ~ Wind | Month, data = airquality))
 #' 
-#' Same result as lm
+#' # Same result as lm
 #' summary(lm(Temp ~ Wind + factor(Month), data = airquality))
 #' 
 #' # Aside: duckreg's default print method hides the "nuisance" coefficients

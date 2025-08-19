@@ -1,6 +1,7 @@
 #' Print method for duckreg objects
 #' @param x `duckreg` object.
 #' @param fes Should the fixed effects be displayed? Default is `FALSE`.
+#' @param ... Other arguments passed to \code{\link[base]{print}}. Not currently used.
 #' @export
 print.duckreg = function(x, fes = FALSE, ...) {
     ct = x[["coeftable"]]

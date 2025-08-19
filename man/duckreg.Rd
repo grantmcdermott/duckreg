@@ -128,7 +128,7 @@ overall time savings. The heuristic is as follows:
 # A not very compelling example using a small in-memory dataset:
 (mod = duckreg(Temp ~ Wind | Month, data = airquality))
 
-Same result as lm
+# Same result as lm
 summary(lm(Temp ~ Wind + factor(Month), data = airquality))
 
 # Aside: duckreg's default print method hides the "nuisance" coefficients

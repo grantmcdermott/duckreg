@@ -36,6 +36,8 @@ Imports:
   stats
 Suggests: 
   tinytest
+Enhances:
+  dbplyr
 Encoding: UTF-8
 RoxygenNote: 7.3.2
 License: MIT + file LICENSE
