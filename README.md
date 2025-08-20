@@ -41,8 +41,10 @@ duckreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 #> [duckreg] Data has 38,325 rows and 210 unique FE groups.
 #> [duckreg] Using strategy: compress
 #> [duckreg] Executing compress strategy SQL
+#> 
 #> Compressed OLS estimation, Dep. Var.: Euros 
 #> Observations.: 38,325 (original) | 210 (compressed) 
+#> Standard-errors: Heteroskedasticity-robust
 #>         Estimate Std. Error t value  Pr(>|t|)    
 #> dist_km -45709.8    1195.84 -38.224 < 2.2e-16 ***
 #> ---
@@ -91,7 +93,8 @@ session, and require only a fraction of the computation time.
 ```r
 duckreg(
    tip_amount ~ fare_amount + passenger_count | month + vendor_name,
-   path = "read_parquet('nyc-taxi/**/*.parquet')" ## path to hive-partitoned dataset
+   path = "read_parquet('nyc-taxi/**/*.parquet')", ## path to hive-partitoned dataset
+   vcov = "hc1"
 )
 #> [duckreg] Estimating compression ratio...
 #> [duckreg] Data has 178,544,324 rows and 24 unique FE groups.
@@ -99,7 +102,8 @@ duckreg(
 #> [duckreg] Executing compress strategy SQL
 #> 
 #> Compressed OLS estimation, Dep. Var.: tip_amount 
-#> Observations.: 178,544,324 (original) | 70,782 (compressed) 
+#> Observations.: 178,544,324 (original) | 70,782 (compressed)
+#> Standard Errors: Heteroskedasticity-robust
 #>                  Estimate Std. Error  t value  Pr(>|t|)    
 #> fare_amount      0.106744   0.000068 1564.742 < 2.2e-16 ***
 #> passenger_count -0.029086   0.000106 -273.866 < 2.2e-16 ***
@@ -148,8 +152,9 @@ dbExecute(
 # same result as earlier
 duckreg(
    tip_amount ~ fare_amount + passenger_count | month + vendor_name,
-   conn = con,    # database connection,
-   table = "taxi" # table name
+   conn = con,     # database connection,
+   table = "taxi", # table name
+   vcov = "hc1"
 )
 #> [duckreg] Estimating compression ratio...
 #> [duckreg] Data has 178,544,324 rows and 24 unique FE groups.
@@ -158,6 +163,7 @@ duckreg(
 #> 
 #> Compressed OLS estimation, Dep. Var.: tip_amount 
 #> Observations.: 178,544,324 (original) | 70,782 (compressed) 
+#> Standard Errors: Heteroskedasticity-robust
 #>                  Estimate Std. Error  t value  Pr(>|t|)    
 #> fare_amount      0.106744   0.000068 1564.742 < 2.2e-16 ***
 #> passenger_count -0.029086   0.000106 -273.866 < 2.2e-16 ***

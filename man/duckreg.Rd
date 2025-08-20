@@ -10,7 +10,7 @@ duckreg(
   table = NULL,
   data = NULL,
   path = NULL,
-  vcov = "hc1",
+  vcov = c("iid", "hc1"),
   strategy = c("auto", "compress", "moments", "mundlak"),
   threshold = 0.001,
   ridge_rel = 1e-12,
@@ -52,9 +52,8 @@ Ignored if either \code{table} or \code{data} is provided.
 }}
 
 \item{vcov}{Character string denoting the desired type of variance-
-covariance correction / standard errors. At present, only "hc1"
-(heteroskedasticity-consistent) are supported, which is also thus
-the default.}
+covariance correction / standard errors. At present, only "iid" (default) or
+"hc1" (heteroskedasticity-consistent) are supported.}
 
 \item{strategy}{Character string indicating the preferred acceleration
 strategy. The default \code{"auto"} will pick an optimal strategy based on

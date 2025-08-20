@@ -35,9 +35,8 @@
 #' note the use of single quotes.
 #' Ignored if either `table` or `data` is provided. 
 #' @param vcov Character string denoting the desired type of variance-
-#' covariance correction / standard errors. At present, only "hc1"
-#' (heteroskedasticity-consistent) are supported, which is also thus
-#' the default.
+#' covariance correction / standard errors. At present, only "iid" (default) or
+#' "hc1" (heteroskedasticity-consistent) are supported.
 #' @param strategy Character string indicating the preferred acceleration
 #'   strategy. The default `"auto"` will pick an optimal strategy based on
 #'   internal heuristics. Users can also override with one of the following
@@ -100,7 +99,7 @@
 #' arXiv preprint arXiv:2102.11297.
 #' Available: https://doi.org/10.48550/arXiv.2102.11297
 #' 
-#' @importFrom DBI dbConnect dbDisconnect dbGetQuery
+#' @importFrom DBI dbConnect dbDisconnect dbGetInfo dbGetQuery
 #' @importFrom duckdb duckdb duckdb_register
 #' @importFrom Formula Formula
 #' @importFrom Matrix chol2inv crossprod Diagonal sparse.model.matrix 
@@ -130,7 +129,7 @@ duckreg = function(
   table = NULL,
   data = NULL,
   path = NULL,
-  vcov = "hc1",
+  vcov = c("iid", "hc1"),
   strategy = c("auto","compress","moments","mundlak"),
   threshold = 0.001,
   ridge_rel = 1e-12,
@@ -138,6 +137,11 @@ duckreg = function(
   data_only = FALSE,
   verbose = TRUE
 ) {
+
+  vcov = tolower(vcov)
+  vcov = match.arg(vcov)
+  strategy = match.arg(strategy)
+
   # Process and validate inputs
   inputs = process_duckreg_inputs(
     fml, conn, table, data, path, vcov, strategy, 
@@ -167,8 +171,7 @@ duckreg = function(
 #' @keywords internal
 process_duckreg_inputs = function(fml, conn, table, data, path, vcov, strategy, 
                                   query_only, data_only, threshold, verbose, ridge_rel) {
-  strategy = match.arg(strategy, c("auto","compress","moments","mundlak"))
-  vcov_type_req = tolower(vcov)  # Connection handling
+  vcov_type_req = vcov
   own_conn = FALSE
   if (is.null(conn)) {
     conn = dbConnect(duckdb(), shutdown = TRUE)
@@ -436,7 +439,7 @@ execute_moments_strategy = function(inputs) {
     paste(pair_exprs, collapse = ",\n  "),
     "\n", inputs$from_statement
   )
-  if (inputs$verbose) {message("[duckreg] Executing moments SQL \n")}
+  if (inputs$verbose) {message("[duckreg] Executing moments SQL\n")}
   moments_df = dbGetQuery(inputs$conn, moments_sql)
   n_total = moments_df$n_total
 
@@ -482,7 +485,7 @@ execute_moments_strategy = function(inputs) {
   if (inputs$vcov_type_req == "hc1") {
     vcov_mat = vcov_mat * (n_total / df_res)
     attr(vcov_mat, "type") = "hc1"
-  } else attr(vcov_mat, "type") = "ols"
+  } else attr(vcov_mat, "type") = "iid"
 
   coefs = as.numeric(betahat)
   names(coefs) = vars_all
@@ -639,7 +642,7 @@ execute_mundlak_strategy = function(inputs) {
   }
   
   # Execute SQL and build matrices
-  if (inputs$verbose) message("[duckreg] Executing mundlak SQL")
+  if (inputs$verbose) message("[duckreg] Executing mundlak SQL\n")
   moments_df = dbGetQuery(inputs$conn, mundlak_sql)
   n_total = moments_df$n_total
   n_fe1 = moments_df$n_fe1
@@ -683,7 +686,7 @@ execute_mundlak_strategy = function(inputs) {
     vcov_mat = vcov_mat * (n_total / df_res)
     attr(vcov_mat, "type") = "hc1"
   } else {
-    attr(vcov_mat, "type") = "ols"
+    attr(vcov_mat, "type") = "iid"
   }
 
   coefs = as.numeric(betahat)
@@ -735,14 +738,14 @@ execute_compress_strategy = function(inputs) {
     
   if (inputs$query_only) return(query_string)
 
-  if (inputs$verbose) message("[duckreg] Executing compress strategy SQL")
+  if (inputs$verbose) message("[duckreg] Executing compress strategy SQL\n")
   compressed_dat = dbGetQuery(inputs$conn, query_string)
   nobs_orig = sum(compressed_dat$n)
   nobs_comp = nrow(compressed_dat)
   compression_ratio = nobs_comp / max(nobs_orig, 1)
   
   if (inputs$verbose && compression_ratio > 0.8) {
-    message(sprintf("[duckreg] Warning: compression ineffective (%.1f%% of original rows).",
+    warning(sprintf("[duckreg] compression ineffective (%.1f%% of original rows).",
                     100 * compression_ratio))
   }
 
@@ -787,7 +790,7 @@ execute_compress_strategy = function(inputs) {
     sigma2 = rss_total / df_res
     XtX_inv = chol2inv(Rch)
     vcov_mat = sigma2 * XtX_inv
-    attr(vcov_mat, "type") = "ols"
+    attr(vcov_mat, "type") = "iid"
   }
 
   coefs = as.numeric(betahat)
