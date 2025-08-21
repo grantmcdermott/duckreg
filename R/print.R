@@ -16,10 +16,7 @@ print.duckreg = function(x, fes = FALSE, ...) {
       "iid" = "IID",
       "hc1" = "Heteroskedasticity-robust"
     )
-    if (!isTRUE(fes) && !is.null(x$fes)) {
-        xvars = x[["xvars"]]
-        ct = ct[xvars, , drop = FALSE]
-    }
+    
     cat("Compressed OLS estimation, Dep. Var.:", x$yvar, "\n")
     cat("Observations.:", prettyNum(x$nobs_orig, big.mark = ","), "(original) |", prettyNum(x$nobs, big.mark = ","), "(compressed)", "\n")
     cat("Standard Errors:", se_type, "\n")

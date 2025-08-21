@@ -424,15 +424,11 @@ execute_moments_strategy = function(inputs) {
                     glue("SUM({x}*{inputs$yvar}) AS sum_{x}_y"),
                     glue("SUM({x}*{x}) AS sum_{x}_{x}"))
   }
-  if (length(inputs$xvars) > 1) {
-    for (i in seq_along(inputs$xvars)) {
-      if (i == 1) next
-      for (j in seq_len(i - 1)) {
-        xi = inputs$xvars[i]
-        xj = inputs$xvars[j]
-        pair_exprs = c(pair_exprs, glue("SUM({xi}*{xj}) AS sum_{xi}_{xj}"))
-      }
-    }
+  xpairs = gen_xvar_pairs(inputs$xvars)
+  for (pair in xpairs) {
+    xi = pair[1]
+    xj = pair[2]
+    pair_exprs = c(pair_exprs, glue("SUM({xi}*{xj}) AS sum_{xi}_{xj}"))
   }
   moments_sql = paste0(
     "SELECT\n  ",
@@ -458,41 +454,32 @@ execute_moments_strategy = function(inputs) {
     XtX[x, x] = sxx
     Xty[x,] = sxy
   }
-  if (length(inputs$xvars) > 1) {
-    for (i in seq_along(inputs$xvars)) {
-      if (i == 1) next
-      for (j in seq_len(i - 1)) {
-        xi = inputs$xvars[i]
-        xj = inputs$xvars[j]
-        val = moments_df[[paste0("sum_", xi, "_", xj)]]
-        XtX[xi, xj] = XtX[xj, xi] = val
-      }
-    }
+  xpairs = gen_xvar_pairs(inputs$xvars)
+  for (pair in xpairs) {
+    xi = pair[1]
+    xj = pair[2]
+    val = moments_df[[paste0("sum_", xi, "_", xj)]]
+    XtX[xi, xj] = XtX[xj, xi] = val
   }
 
-  Rch = tryCatch(chol(XtX), error = function(e) {
-    ridge = inputs$ridge_rel * mean(diag(XtX))
-    chol(XtX + diag(ridge, p))
-  })
-  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
+  solve_result = solve_with_ridge_fallback(XtX, Xty, inputs$ridge_rel)
+  betahat = solve_result$betahat
+  Rch = solve_result$Rch
   rownames(betahat) = vars_all
 
   rss = as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
   df_res = max(n_total - p, 1)
-  sigma2 = rss / df_res
   XtX_inv = chol2inv(Rch)
-  vcov_mat = sigma2 * XtX_inv
-  if (inputs$vcov_type_req == "hc1") {
-    vcov_mat = vcov_mat * (n_total / df_res)
-    attr(vcov_mat, "type") = "hc1"
-  } else attr(vcov_mat, "type") = "iid"
+  vcov_mat = compute_vcov(
+    vcov_type = inputs$vcov_type_req, 
+    strategy = "moments", 
+    XtX_inv = XtX_inv, 
+    rss = rss, 
+    df_res = df_res, 
+    nobs_orig = n_total
+  )
 
-  coefs = as.numeric(betahat)
-  names(coefs) = vars_all
-  ses = sqrt(Matrix::diag(vcov_mat))
-  tstats = coefs / ses
-  pvals = 2 * pt(-abs(tstats), df_res)
-  coeftable = cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
+  coeftable = gen_coeftable(betahat, vcov_mat, df_res)
 
   list(
     coeftable = coeftable,
@@ -538,16 +525,12 @@ execute_mundlak_strategy = function(inputs) {
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, inputs$yvar, x, inputs$yvar),
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, x, x, x))
     }
-    if (length(inputs$xvars) > 1) {
-      for (i in seq_along(inputs$xvars)) {
-        if (i == 1) next
-        for (j in seq_len(i - 1)) {
-          xi = inputs$xvars[i]
-          xj = inputs$xvars[j]
-          moment_terms = c(moment_terms,
-                            sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
-        }
-      }
+    xpairs = gen_xvar_pairs(inputs$xvars)
+    for (pair in xpairs) {
+      xi = pair[1]
+      xj = pair[2]
+      moment_terms = c(moment_terms,
+                        sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
     }
 
     mundlak_sql = paste0(
@@ -597,16 +580,12 @@ execute_mundlak_strategy = function(inputs) {
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, inputs$yvar, x, inputs$yvar),
                         sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", x, x, x, x))
     }
-    if (length(inputs$xvars) > 1) {
-      for (i in seq_along(inputs$xvars)) {
-        if (i == 1) next
-        for (j in seq_len(i - 1)) {
-          xi = inputs$xvars[i]
-          xj = inputs$xvars[j]
-          moment_terms = c(moment_terms,
-                            sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
-        }
-      }
+    xpairs = gen_xvar_pairs(inputs$xvars)
+    for (pair in xpairs) {
+      xi = pair[1]
+      xj = pair[2]
+      moment_terms = c(moment_terms,
+                        sprintf("SUM(CAST(%s_tilde AS FLOAT) * CAST(%s_tilde AS FLOAT)) AS sum_%s_%s", xi, xj, xi, xj))
     }
 
     mundlak_sql = paste0(
@@ -668,33 +647,25 @@ execute_mundlak_strategy = function(inputs) {
     }
   }
 
-  Rch = tryCatch(chol(XtX), error = function(e) {
-    ridge = inputs$ridge_rel * mean(diag(XtX))
-    chol(XtX + diag(ridge, p))
-  })
-  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
+  solve_result = solve_with_ridge_fallback(XtX, Xty, inputs$ridge_rel)
+  betahat = solve_result$betahat
+  Rch = solve_result$Rch
   rownames(betahat) = vars_all
 
   rss = as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
   df_fe = n_fe1 + n_fe2 - 1
   df_res = max(n_total - p - df_fe, 1)
-  sigma2 = rss / df_res
   XtX_inv = chol2inv(Rch)
-  vcov_mat = sigma2 * XtX_inv
-  
-  if (inputs$vcov_type_req == "hc1") {
-    vcov_mat = vcov_mat * (n_total / df_res)
-    attr(vcov_mat, "type") = "hc1"
-  } else {
-    attr(vcov_mat, "type") = "iid"
-  }
+  vcov_mat = compute_vcov(
+    vcov_type = inputs$vcov_type_req, 
+    strategy = "mundlak", 
+    XtX_inv = XtX_inv, 
+    rss = rss, 
+    df_res = df_res, 
+    nobs_orig = n_total
+  )
 
-  coefs = as.numeric(betahat)
-  names(coefs) = vars_all
-  ses = sqrt(Matrix::diag(vcov_mat))
-  tstats = coefs / ses
-  pvals = 2 * pt(-abs(tstats), df_res)
-  coeftable = cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
+  coeftable = gen_coeftable(betahat, vcov_mat, df_res)
 
   list(
     coeftable = coeftable,
@@ -761,49 +732,33 @@ execute_compress_strategy = function(inputs) {
   XtX = crossprod(Xw)
   XtY = crossprod(Xw, Yw)
 
-  Rch = tryCatch(chol(XtX), error = function(e) {
-    ridge = inputs$ridge_rel * mean(diag(XtX))
-    chol(XtX + diag(ridge, ncol(XtX)))
-  })
-  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), XtY))
+  solve_result = solve_with_ridge_fallback(XtX, XtY, inputs$ridge_rel)
+  betahat = solve_result$betahat
+  Rch = solve_result$Rch
   if (is.null(dim(betahat))) betahat = matrix(betahat, ncol = 1)
   rownames(betahat) = colnames(X)
   yhat = as.numeric(X %*% betahat)
 
-  if (inputs$vcov_type_req == "hc1") {
-    n_vec = compressed_dat$n
-    sum_Y = compressed_dat$sum_Y
-    sum_Y_sq = compressed_dat$sum_Y_sq
-    rss_g = sum_Y_sq - 2 * yhat * sum_Y + n_vec * (yhat^2)
-    XtX_inv = chol2inv(Rch)
-    meat = crossprod(X, Diagonal(x = as.numeric(rss_g)) %*% X)
-    df_res = max(nobs_orig - ncol(X), 1)
-    scale_hc1 = nobs_orig / df_res
-    vcov_mat = scale_hc1 * (XtX_inv %*% meat %*% XtX_inv)
-    attr(vcov_mat, "type") = "hc1"
-  } else {
-    sum_Y = compressed_dat$sum_Y
-    sum_Y_sq = compressed_dat$sum_Y_sq
-    rss_g = sum_Y_sq - 2 * yhat * sum_Y + compressed_dat$n * (yhat^2)
-    rss_total = sum(rss_g)
-    df_res = max(nobs_orig - ncol(X), 1)
-    sigma2 = rss_total / df_res
-    XtX_inv = chol2inv(Rch)
-    vcov_mat = sigma2 * XtX_inv
-    attr(vcov_mat, "type") = "iid"
-  }
-
-  coefs = as.numeric(betahat)
-  names(coefs) = rownames(betahat)
-  ses = sqrt(Matrix::diag(vcov_mat))
-  tstats = coefs / ses
-  pvals = 2 * pt(-abs(tstats), max(nobs_orig - length(coefs), 1))
-  coeftable = cbind(
-    estimate = coefs,
-    std.error = ses,
-    statistic = tstats,
-    p.values = pvals
+  n_vec = compressed_dat$n
+  sum_Y = compressed_dat$sum_Y
+  sum_Y_sq = compressed_dat$sum_Y_sq
+  rss_g = sum_Y_sq - 2 * yhat * sum_Y + n_vec * (yhat^2)
+  rss_total = sum(rss_g)
+  df_res = max(nobs_orig - ncol(X), 1)
+  XtX_inv = chol2inv(Rch)
+  
+  vcov_mat = compute_vcov(
+    vcov_type = inputs$vcov_type_req,
+    strategy = "compress",
+    XtX_inv = XtX_inv,
+    rss = rss_total,
+    df_res = df_res,
+    nobs_orig = nobs_orig,
+    X = X,
+    rss_g = rss_g
   )
+
+  coeftable = gen_coeftable(betahat, vcov_mat, max(nobs_orig - ncol(X), 1))
 
   list(
     coeftable = coeftable,
@@ -818,8 +773,71 @@ execute_compress_strategy = function(inputs) {
     strategy = "compress",
     compression_ratio = compression_ratio,
     compression_ratio_est = inputs$compression_ratio_est,
-    df_residual = max(nobs_orig - length(coefs), 1)
+    df_residual = max(nobs_orig - ncol(X), 1)
   )
+}
+
+#' Solve linear system with ridge fallback
+#' @keywords internal
+solve_with_ridge_fallback = function(XtX, Xty, ridge_rel) {
+  p = nrow(XtX)
+  Rch = tryCatch(chol(XtX), error = function(e) {
+    ridge = ridge_rel * mean(diag(XtX))
+    chol(XtX + diag(ridge, p))
+  })
+  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
+  list(betahat = betahat, Rch = Rch)
+}
+
+#' Compute variance-covariance matrix
+#' @keywords internal
+compute_vcov = function(vcov_type = "iid", strategy = "compress", XtX_inv, rss, 
+                        df_res, nobs_orig, X = NULL, rss_g = NULL) {
+  if (vcov_type == "hc1") {
+    if (strategy == "compress") {
+      # Compress strategy: HC1 with grouped residuals
+      meat = crossprod(X, Diagonal(x = as.numeric(rss_g)) %*% X)
+      scale_hc1 = nobs_orig / df_res
+      vcov_mat = scale_hc1 * (XtX_inv %*% meat %*% XtX_inv)
+    } else {
+      # Moments/Mundlak strategy: simple HC1 scaling
+      sigma2 = rss / df_res
+      vcov_mat = sigma2 * XtX_inv * (nobs_orig / df_res)
+    }
+    attr(vcov_mat, "type") = "hc1"
+  } else {
+    # IID case (same for all strategies)
+    sigma2 = rss / df_res
+    vcov_mat = sigma2 * XtX_inv
+    attr(vcov_mat, "type") = "iid"
+  }
+  vcov_mat
+}
+
+#' Generate unique pairs of variables (preserves original nested loop order)
+#' @keywords internal
+gen_xvar_pairs = function(xvars) {
+  pairs = list()
+  if (length(xvars) > 1) {
+    for (i in seq_along(xvars)) {
+      if (i == 1) next
+      for (j in seq_len(i - 1)) {
+        pairs = c(pairs, list(c(xvars[i], xvars[j])))
+      }
+    }
+  }
+  pairs
+}
+
+#' Generate coefficient table from estimates and vcov matrix
+#' @keywords internal
+gen_coeftable = function(betahat, vcov_mat, df_residual) {
+  coefs = as.numeric(betahat)
+  names(coefs) = rownames(betahat)
+  ses = sqrt(Matrix::diag(vcov_mat))
+  tstats = coefs / ses
+  pvals = 2 * pt(-abs(tstats), df_residual)
+  cbind(estimate = coefs, std.error = ses, statistic = tstats, p.values = pvals)
 }
 
 #' Finalize duckreg result object
