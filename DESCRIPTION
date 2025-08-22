@@ -18,6 +18,13 @@ Authors@R:
       email = "lal.apoorva@gmail.com",
       role = c("ctb"),
       comment = c(ORCID = "0000-0002-3697-614X")
+    ), 
+    person(
+      given = "James",
+      famil = "Brand", 
+      email = "jamesbrandecon@gmail.com",
+      role = c("ctb"),
+      comment = c(ORCID = "0000-0002-1663-5583")
     )
   )
 Description: Leverages the power of DuckDB to run regressions on very large
