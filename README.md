@@ -115,9 +115,7 @@ Note the size of the original dataset, which is nearly 180 million rows, versus
 the compressed dataset, which is down to only 70k. On my laptop (M4 MacBook Pro)
 this regression completes in **under 2 seconds**... and that includes the time
 it took to determine an optimal estimation strategy, as well read the data from
-disk!^[If we skipped the automatic strategy determination by providing an
-explict strategy, then the total computation time drops to
-_less than 1 second_...]
+disk![^1]
 
 #### Option 2: Persistent database
 
@@ -175,3 +173,9 @@ dbRemoveTable(con, "taxi")
 dbDisconnect(con)
 unlink("nyc.db") # remove from disk
 ```
+
+
+
+[^1]: If we skipped the automatic strategy determination by providing an
+   explict strategy, then the total computation time drops to
+   _less than 1 second_...
