@@ -409,7 +409,6 @@ choose_strategy = function(inputs) {
 #' Execute moments strategy (no fixed effects)
 #' @keywords internal
 execute_moments_strategy = function(inputs) {
-  if (inputs$data_only) warning("data_only ignored for moments.")
   
   pair_exprs = c(
     "COUNT(*) AS n_total",
@@ -437,6 +436,7 @@ execute_moments_strategy = function(inputs) {
   if (inputs$query_only) return(moments_sql)
   if (inputs$verbose) {message("[duckreg] Executing moments SQL\n")}
   moments_df = dbGetQuery(inputs$conn, moments_sql)
+  if (inputs$data_only) return(moments_df)
   n_total = moments_df$n_total
 
   vars_all = c("(Intercept)", inputs$xvars)
@@ -500,7 +500,6 @@ execute_moments_strategy = function(inputs) {
 #' Execute mundlak strategy (1-2 fixed effects)
 #' @keywords internal
 execute_mundlak_strategy = function(inputs) {
-  if (inputs$data_only) warning("data_only ignored for mundlak.")
 
   if (length(inputs$fes) == 1) {
     # Single FE: simple within-group demeaning
@@ -623,10 +622,11 @@ execute_mundlak_strategy = function(inputs) {
   
   # Execute SQL and build matrices
   if (inputs$verbose) message("[duckreg] Executing mundlak SQL\n")
-  moments_df = dbGetQuery(inputs$conn, mundlak_sql)
-  n_total = moments_df$n_total
-  n_fe1 = moments_df$n_fe1
-  n_fe2 = moments_df$n_fe2
+  mundlak_df = dbGetQuery(inputs$conn, mundlak_sql)
+  if (inputs$data_only) return(mundlak_df)
+  n_total = mundlak_df$n_total
+  n_fe1 = mundlak_df$n_fe1
+  n_fe2 = mundlak_df$n_fe2
 
   vars_all = inputs$xvars  # No intercept for FE models
   p = length(vars_all)
@@ -634,8 +634,8 @@ execute_mundlak_strategy = function(inputs) {
   Xty = matrix(0, p, 1, dimnames = list(vars_all, ""))
 
   for (x in inputs$xvars) {
-    XtX[x, x] = moments_df[[sprintf("sum_%s_%s", x, x)]]
-    Xty[x, ]  = moments_df[[sprintf("sum_%s_%s", x, inputs$yvar)]]
+    XtX[x, x] = mundlak_df[[sprintf("sum_%s_%s", x, x)]]
+    Xty[x, ]  = mundlak_df[[sprintf("sum_%s_%s", x, inputs$yvar)]]
   }
   if (length(inputs$xvars) > 1) {
     for (i in seq_along(inputs$xvars)) {
@@ -643,7 +643,7 @@ execute_mundlak_strategy = function(inputs) {
       for (j in seq_len(i - 1)) {
         xi = inputs$xvars[i]
         xj = inputs$xvars[j]
-        XtX[xi, xj] = XtX[xj, xi] = moments_df[[sprintf("sum_%s_%s", xi, xj)]]
+        XtX[xi, xj] = XtX[xj, xi] = mundlak_df[[sprintf("sum_%s_%s", xi, xj)]]
       }
     }
   }
@@ -653,7 +653,7 @@ execute_mundlak_strategy = function(inputs) {
   Rch = solve_result$Rch
   rownames(betahat) = vars_all
 
-  rss = as.numeric(moments_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
+  rss = as.numeric(mundlak_df$sum_y_sq - 2 * t(betahat) %*% Xty + t(betahat) %*% XtX %*% betahat)
   df_fe = n_fe1 + n_fe2 - 1
   df_res = max(n_total - p - df_fe, 1)
   XtX_inv = chol2inv(Rch)
