@@ -10,6 +10,8 @@
 \item{x}{`duckreg` object.}
 
 \item{fes}{Should the fixed effects be displayed? Default is `FALSE`.}
+
+\item{...}{Other arguments passed to \code{\link[base]{print}}. Not currently used.}
 }
 \description{
 Print method for duckreg objects

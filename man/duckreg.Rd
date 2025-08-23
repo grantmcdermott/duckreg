@@ -2,7 +2,7 @@
 % Please edit documentation in R/duckreg.R
 \name{duckreg}
 \alias{duckreg}
-\title{Run a compressed regression with a DuckDB backend.}
+\title{Run a regression on a DuckDB backend.}
 \usage{
 duckreg(
   fml,
@@ -10,9 +10,13 @@ duckreg(
   table = NULL,
   data = NULL,
   path = NULL,
-  vcov = "hc1",
+  vcov = c("iid", "hc1"),
+  strategy = c("auto", "compress", "moments", "mundlak"),
+  threshold = 0.001,
+  ridge_rel = 1e-12,
   query_only = FALSE,
-  data_only = FALSE
+  data_only = FALSE,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -48,9 +52,25 @@ Ignored if either \code{table} or \code{data} is provided.
 }}
 
 \item{vcov}{Character string denoting the desired type of variance-
-covariance correction / standard errors. At present, only "hc1"
-(heteroskedasticity-consistent) are supported, which is also thus
-the default.}
+covariance correction / standard errors. At present, only "iid" (default) or
+"hc1" (heteroskedasticity-consistent) are supported.}
+
+\item{strategy}{Character string indicating the preferred acceleration
+strategy. The default \code{"auto"} will pick an optimal strategy based on
+internal heuristics. Users can also override with one of the following
+explicit strategies: \code{"compress"}, \code{"mundlak"}, or \code{"moments"}. See
+the Acceleration Strategies section below for details.}
+
+\item{threshold}{Numeric. Threshold for determining the acceleration
+\code{strategy} under the default \code{"auto"} option. Maps to the ratio between
+(a) unique values of combined covariates and fixed effects, and (b) total
+rows in the dataset. If this ratio is below the given the given threshold
+(default = 0.1\%), then the \code{"compress"} strategy is used, otherwise
+\code{"mundlak"} or \code{"moments"} depending on the number of fixed effects.}
+
+\item{ridge_rel}{Relative ridge penalty to be used if the default Cholesky
+solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
+\verb{lambda = ridge_rel * mean(diag(X'X))}.}
 
 \item{query_only}{Logical indicating whether only the underlying compression
 SQL query should be returned (i.e., no computation will be performed).
@@ -58,6 +78,9 @@ Default is \code{FALSE}.}
 
 \item{data_only}{Logical indicating whether only the compressed dataset
 should be returned (i.e., no regression is run). Default is \code{FALSE}.}
+
+\item{verbose}{Logical. Print progress messages to the console? Defaults to
+\code{TRUE}.}
 }
 \value{
 A list of class "duckreg" containing various slots, including a table
@@ -65,17 +88,46 @@ of coefficients (which the associated print method will display).
 }
 \description{
 Leverages the power of DuckDB to run regressions on very large datasets,
-which may not fit into R's memory. The core procedure follows Wong et al.
-(2021) by reducing ("compressing") the data to a set of summary statistics
-and then running frequency-weighted least squares on this smaller dataset.
-Robust standard errors are computed from sufficient statistics.
+which may not fit into R's memory. Various acceleration strategies allow for
+highly efficient computation, while robust standard errors are computed from
+sufficient statistics.
 }
+\section{Acceleration strategies}{
+
+
+\code{duckreg} offers three primary acceleration (shortcut) strategies:
+\enumerate{
+\item \code{"compress"}: compress the size of data via a \verb{GROUP BY} operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
+\item \code{"moments"}: calculate sufficient statistics using global means (\eqn{X'X, X'y}). Limited to cases without fixed effects.
+\item \code{"mundlak"}: as per \code{"moments"}, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
+}
+
+The relative efficiency of each of these strategies depends on the size and
+structure of the data, as well the number of unique regressors and
+fixed-effects. While the compression approach can yield remarkable
+performance gains for "standard" cases, it is less efficient for a true panel
+(repeated cross-sections over time), where N >> T. In such cases, it is more
+efficient to use a Mundlak-type representation that subtracts group means
+first. (Reason: unit and time fixed effects are typically high dimensional,
+but covariate averages are not.)
+
+If the user does not specify an explicit acceleration strategy, then
+\code{duckreg} will invoke an \code{"auto"} heuristic behind the scenes. This requires
+some additional overhead, but in most cases should be negligible next to the
+overall time savings. The heuristic is as follows:
+\itemize{
+\item IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) THEN \code{"moments"}.
+\item ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) THEN \code{"mundlak"}.
+\item ELSE THEN \code{"compress"}.
+}
+}
+
 \examples{
 
 # A not very compelling example using a small in-memory dataset:
 (mod = duckreg(Temp ~ Wind | Month, data = airquality))
 
-Same result as lm
+# Same result as lm
 summary(lm(Temp ~ Wind + factor(Month), data = airquality))
 
 # Aside: duckreg's default print method hides the "nuisance" coefficients
@@ -88,6 +140,11 @@ print(mod, fes = TRUE)
 # https://github.com/grantmcdermott/duckreg?tab=readme-ov-file#quickstart
 }
 \references{
+Arkhangelsky, D. & Imbens, G. (2024)
+\cite{Fixed Effects and the Generalized Mundlak Estimator}.
+The Review of Economic Studies, 91(5), pp. 2545–2571.
+Available: https://doi.org/10.1093/restud/rdad089
+
 Wong, J., Forsell, E., Lewis, R., Mao, T., & Wardrop, M. (2021).
 \cite{You Only Compress Once: Optimal Data Compression for Estimating Linear Models.}
 arXiv preprint arXiv:2102.11297.

@@ -1,6 +1,7 @@
 #' Print method for duckreg objects
 #' @param x `duckreg` object.
 #' @param fes Should the fixed effects be displayed? Default is `FALSE`.
+#' @param ... Other arguments passed to \code{\link[base]{print}}. Not currently used.
 #' @export
 print.duckreg = function(x, fes = FALSE, ...) {
     ct = x[["coeftable"]]
@@ -9,8 +10,30 @@ print.duckreg = function(x, fes = FALSE, ...) {
         xvars = x[["xvars"]]
         ct = ct[xvars, , drop = FALSE]
     }
-    cat("Compressed OLS estimation, Dep. Var.:", x$yvar, "\n")
-    cat("Observations.:", prettyNum(x$nobs_orig, big.mark = ","), "(original) |", prettyNum(x$nobs, big.mark = ","), "(compressed)", "\n")
+    se_type = attr(x$vcov, "type")
+    se_type = switch(
+      se_type,
+      "iid" = "IID",
+      "hc1" = "Heteroskedasticity-robust"
+    )
+    if (x$strategy == "compress") {
+      cat("Compressed OLS estimation, Dep. Var.:", x$yvar, "\n")
+      cat("Observations.:", prettyNum(x$nobs_orig, big.mark = ","), "(original) |", prettyNum(x$nobs, big.mark = ","), "(compressed)", "\n")
+    } else if (x$strategy == "mundlak") {
+      num_fes = length(x$fes)
+      mstring = "Mundlak"
+      if (num_fes == 1) {
+        mstring = paste("One-way", mstring)
+      } else if (num_fes == 2) {
+        mstring = paste("Two-way", mstring)
+      }
+      cat(paste(mstring, "OLS estimation, Dep. Var.:", x$yvar, "\n"))
+      cat("Observations.:", prettyNum(x$nobs_orig, big.mark = ","), "\n")
+    } else if (x$strategy == "moments") {
+      cat("Moments-based OLS estimation, Dep. Var.:", x$yvar, "\n")
+      cat("Observations.:", prettyNum(x$nobs_orig, big.mark = ","), "\n")
+    }
+    cat("Standard Errors:", se_type, "\n")
     print_coeftable(ct)
     invisible(ct)
 }
