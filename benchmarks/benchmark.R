@@ -218,6 +218,14 @@ res_summ = res[,
 ]
 res_summ
 
+res_summ
+
+#
+## Plots ----
+
+#
+## benchmark times
+
 plt(
   tt ~ N | strategy,
   facet = ~ as.factor(compressible),
@@ -234,29 +242,6 @@ plt(
   file = 'benchmarks/benchmark_results.png',
   width = 8,
   height = 5
-)
-
-res_summ
-
-#
-## Plots ----
-
-#
-## benchmark times
-
-plt(
-  x1_coef ~ N | strategy,
-  pch = 'by',
-  lwd = 'by',
-  type = 'b',
-  alpha = 0.2,
-  data = melt(
-    res_summ,
-    id = c('compressible', 'strategy', 'N'),
-    measure = patterns('coef$')
-  ) |>
-    dcast(compressible + N + variable ~ strategy),
-  xaxl = 'l'
 )
 
 #
