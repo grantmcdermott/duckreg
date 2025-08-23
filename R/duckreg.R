@@ -162,7 +162,7 @@ duckreg = function(
         "compress" = execute_compress_strategy(inputs), 
     stop("Unknown strategy: ", chosen_strategy)
   )
-  
+  if (query_only) return(invisible())
   # Finalize result
   finalize_duckreg_result(result, inputs, chosen_strategy)
 }
@@ -410,7 +410,6 @@ choose_strategy = function(inputs) {
 #' Execute moments strategy (no fixed effects)
 #' @keywords internal
 execute_moments_strategy = function(inputs) {
-  if (inputs$query_only) stop("query_only unsupported for moments.")
   if (inputs$data_only) warning("data_only ignored for moments.")
   
   pair_exprs = c(
@@ -435,6 +434,8 @@ execute_moments_strategy = function(inputs) {
     paste(pair_exprs, collapse = ",\n  "),
     "\n", inputs$from_statement
   )
+
+  if (inputs$query_only) return(cat(moments_sql))
   if (inputs$verbose) {message("[duckreg] Executing moments SQL\n")}
   moments_df = dbGetQuery(inputs$conn, moments_sql)
   n_total = moments_df$n_total
@@ -500,7 +501,6 @@ execute_moments_strategy = function(inputs) {
 #' Execute mundlak strategy (1-2 fixed effects)
 #' @keywords internal
 execute_mundlak_strategy = function(inputs) {
-  if (inputs$query_only) stop("query_only unsupported for mundlak.")
   if (inputs$data_only) warning("data_only ignored for mundlak.")
 
   if (length(inputs$fes) == 1) {
@@ -619,6 +619,8 @@ execute_mundlak_strategy = function(inputs) {
       SELECT * FROM moments"
     )
   }
+
+  if (inputs$query_only) return(cat(mundlak_sql))
   
   # Execute SQL and build matrices
   if (inputs$verbose) message("[duckreg] Executing mundlak SQL\n")
@@ -707,7 +709,7 @@ execute_compress_strategy = function(inputs) {
     FROM cte"
     )
     
-  if (inputs$query_only) return(query_string)
+  if (inputs$query_only) return(cat(query_string))
 
   if (inputs$verbose) message("[duckreg] Executing compress strategy SQL\n")
   compressed_dat = dbGetQuery(inputs$conn, query_string)
