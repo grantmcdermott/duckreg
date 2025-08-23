@@ -162,7 +162,6 @@ duckreg = function(
         "compress" = execute_compress_strategy(inputs), 
     stop("Unknown strategy: ", chosen_strategy)
   )
-  if (query_only) return(invisible())
   # Finalize result
   finalize_duckreg_result(result, inputs, chosen_strategy)
 }
@@ -435,7 +434,7 @@ execute_moments_strategy = function(inputs) {
     "\n", inputs$from_statement
   )
 
-  if (inputs$query_only) return(cat(moments_sql))
+  if (inputs$query_only) return(moments_sql)
   if (inputs$verbose) {message("[duckreg] Executing moments SQL\n")}
   moments_df = dbGetQuery(inputs$conn, moments_sql)
   n_total = moments_df$n_total
@@ -620,7 +619,7 @@ execute_mundlak_strategy = function(inputs) {
     )
   }
 
-  if (inputs$query_only) return(cat(mundlak_sql))
+  if (inputs$query_only) return(mundlak_sql)
   
   # Execute SQL and build matrices
   if (inputs$verbose) message("[duckreg] Executing mundlak SQL\n")
@@ -709,7 +708,7 @@ execute_compress_strategy = function(inputs) {
     FROM cte"
     )
     
-  if (inputs$query_only) return(cat(query_string))
+  if (inputs$query_only) return(query_string)
 
   if (inputs$verbose) message("[duckreg] Executing compress strategy SQL\n")
   compressed_dat = dbGetQuery(inputs$conn, query_string)
@@ -845,6 +844,11 @@ gen_coeftable = function(betahat, vcov_mat, df_residual) {
 #' Finalize duckreg result object
 #' @keywords internal
 finalize_duckreg_result = function(result, inputs, chosen_strategy) {
+  if (inputs$query_only) {
+    cat(result)
+    return(invisible(result))
+  }
+  if (inputs$data_only) return(result)
   result$strategy = chosen_strategy
   class(result) = c("duckreg", class(result))
   result
