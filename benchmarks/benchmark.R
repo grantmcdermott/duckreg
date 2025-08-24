@@ -4,7 +4,7 @@
 #
 ## libs and globals ----
 
-library(duckreg)
+library(dbreg)
 # pkgload::load_all()
 library(fixest)
 library(data.table)
@@ -119,7 +119,7 @@ time_fit = function(
 
   if (strategy != "feols") {
     tt = system.time({
-      fit = duckreg(fml = fml, data = data, vcov = "iid", strategy = strategy)
+      fit = dbreg(fml = fml, data = data, vcov = "iid", strategy = strategy)
     })["elapsed"]
   } else {
     tt = system.time({
@@ -255,12 +255,12 @@ res_long = res_summ |>
   dcast(compressible + N + coef + part ~ strategy) |>
   melt(
     measure = c('compress', 'mundlak'),
-    value = 'duckreg',
+    value = 'dbreg',
     variable = 'strategy'
   )
 
 plt(
-  feols ~ duckreg | strategy,
+  feols ~ dbreg | strategy,
   facet = coef ~ compressible,
   # facet.args = list(free = TRUE),
   pch = 'by',
@@ -274,7 +274,7 @@ plt(
 )
 
 plt(
-  feols ~ duckreg | strategy,
+  feols ~ dbreg | strategy,
   facet = coef ~ compressible,
   # facet.args = list(free = TRUE),
   pch = 'by',

@@ -1,3 +1,3 @@
-# duckreg 0.0.1
+# dbreg 0.0.1
 
 * Initial GitHub release.

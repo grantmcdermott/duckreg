@@ -1,5 +1,5 @@
 
 if ( requireNamespace("tinytest", quietly=TRUE) ){
-  tinytest::test_package("duckreg")
+  tinytest::test_package("dbreg")
 }
 

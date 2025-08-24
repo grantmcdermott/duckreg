@@ -1,17 +1,19 @@
-# duckreg
+# dbreg
 
 Very fast regressions on big datasets.
 
 ## What
 
-**duckreg** is an R package that leverages the power of
-[DuckDB](https://duckdb.org/) to run regressions on very large datasets, 
-which may not fit into R's memory. Various acceleration strategies allow for 
-highly efficient computation, while robust standard errors are computed from 
-sufficient statistics.
+**dbreg** is an R package that leverages the power of **d**ata**b**ases to run
+**reg**ressions on very large datasets, which may not fit into R's memory. 
+Various acceleration strategies allow for highly efficient computation, while 
+robust standard errors are computed from sufficient statistics. Our default
+[DuckDB](https://duckdb.org/) backend provides a powerful, embedded analytics
+engine to get users up and running with minimal effort. Users can also specify
+alternative database backends, depending on their computing needs and setup.
 
-The **duckreg** R package is inspired by, and has similar aims to, the
-[Python package of the same name](https://github.com/py-econometrics/duckreg).
+The **dbreg** R package is inspired by, and has similar aims to, the
+[duckreg](https://github.com/py-econometrics/duckreg) Python package.
 This implementation offers some idiomatic, R-focused features like a formula
 interface and "pretty" print methods. But the two packages should otherwise
 be very similar.
@@ -20,7 +22,7 @@ be very similar.
 
 ```r
 # install.packages("remotes")
-remotes::install_github("grantmcdermott/duckreg")
+remotes::install_github("grantmcdermott/dbreg")
 ```
 
 ## Quickstart
@@ -31,16 +33,16 @@ To get ourselves situated, we'll first demonstrate by using an in-memory R
 dataset.
 
 ```r
-library(duckreg)
+library(dbreg)
 library(fixest)   # for data and comparison
 
 data("trade", package = "fixest")
 
-duckreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
-#> [duckreg] Estimating compression ratio...
-#> [duckreg] Data has 38,325 rows and 210 unique FE groups.
-#> [duckreg] Using strategy: compress
-#> [duckreg] Executing compress strategy SQL
+dbreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
+#> [dbreg] Estimating compression ratio...
+#> [dbreg] Data has 38,325 rows and 210 unique FE groups.
+#> [dbreg] Using strategy: compress
+#> [dbreg] Executing compress strategy SQL
 #> 
 #> Compressed OLS estimation, Dep. Var.: Euros 
 #> Observations.: 38,325 (original) | 210 (compressed) 
@@ -51,12 +53,12 @@ duckreg(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
-Behind the scenes, **duckreg** has compressed the original dataset down from
+Behind the scenes, **dbreg** has compressed the original dataset down from
 nearly 40,000 observations to only 210, before running the final (weighted)
 regression on this much smaller data object. This compression procedure trick
 follows [Wang _et. al. (2021)](https://doi.org/10.48550/arXiv.2102.11297) and
 effectively allows us to compute on a much lighter object, saving time and
-memory. We can can confirm that it still gives the same result as running 
+memory. We can confirm that it still gives the same result as running 
 `fixest::feols` on the full dataset:
 
 ```r
@@ -75,33 +77,32 @@ feols(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 
 ### Big dataset
 
-For a more appropriate **duckreg** use-case, let's run a regression on some NYC
+For a more appropriate **dbreg** use-case, let's run a regression on some NYC
 taxi data. (Download instructions
 [here](https://grantmcdermott.com/duckdb-polars/requirements.html).)
 The dataset that we're working with here is about 180 million rows deep and
 takes up 8.5 GB on disk (compressed).[^1]
-**duckreg** offers two basic ways to interact with, and analyse, data of this
-size.
+**dbreg** offers two basic ways to analyse and interact with data of this size.
 
 #### Option 1: "On-the-fly"
 
 Use the `path` argument to read the data directly from disk and perform the
 compression computation in an ephemeral DuckDB connection. This requires that
-data are small enough to fit into RAM... but please note that "small enough" is
-a very relative concept. Thanks to DuckDB's incredible efficiency, your RAM
-should be able to handle very large datasets that would otherwise crash your R
-session, and require only a fraction of the computation time.
+the data are small enough to fit into RAM... but please note that "small enough"
+is a relative concept. Thanks to DuckDB's incredible efficiency, your RAM should
+be able to handle very large datasets that would otherwise crash your R session,
+and require only a fraction of the computation time.
 
 ```r
-duckreg(
+dbreg(
    tip_amount ~ fare_amount + passenger_count | month + vendor_name,
-   path = "read_parquet('nyc-taxi/**/*.parquet')", ## path to hive-partitoned dataset
+   path = "read_parquet('nyc-taxi/**/*.parquet')", ## path to hive-partitioned dataset
    vcov = "hc1"
 )
-#> [duckreg] Estimating compression ratio...
-#> [duckreg] Data has 178,544,324 rows and 24 unique FE groups.
-#> [duckreg] Using strategy: compress
-#> [duckreg] Executing compress strategy SQL
+#> [dbreg] Estimating compression ratio...
+#> [dbreg] Data has 178,544,324 rows and 24 unique FE groups.
+#> [dbreg] Using strategy: compress
+#> [dbreg] Executing compress strategy SQL
 #> 
 #> Compressed OLS estimation, Dep. Var.: tip_amount 
 #> Observations.: 178,544,324 (original) | 70,782 (compressed)
@@ -116,30 +117,25 @@ duckreg(
 Note the size of the original dataset, which is nearly 180 million rows, versus
 the compressed dataset, which is down to only 70k. On my laptop (M4 MacBook Pro)
 this regression completes in **under 2 seconds**... and that includes the time
-it took to determine an optimal estimation strategy, as well read the data from
+it took to determine an optimal estimation strategy, as well as read the data from
 disk![^2]
 
 #### Option 2: Persistent database
 
-While querying on-the-fly is both convenient and extremely performant, you can
-of course also run regressions against existing tables in a persistent DuckDB
-database. This latter approach requires that you specify appropriate `conn` and
-`table` arguments. But note that querying against a persistent database also
-means that you can run regressions against bigger than RAM data, since we will
-automatically take advantage of DuckDB's
-[out-of-core functionality](https://duckdb.org/2024/07/09/memory-management.html) 
-(streaming, hash aggregation, etc.).
+While querying on-the-fly with our default DuckDB backend is both convenient and 
+extremely performant, you can also run regressions against existing tables in a  
+persistent database connection. This could be DuckDB, but it could also be any
+other [supported backend](https://github.com/r-dbi/backends#readme).
+All you need do is specify the appropriate `conn` and `table` arguments.
 
 ```r
-## Explicitly load the duckdb package (and thus also DBI) to create a persistent
-## database
-library(duckdb)
-#> Loading required package: DBI
+# load the DBI package to connect to a persistent database
+library(DBI)
 
-# create connection to persistent database
-con = dbConnect(duckdb(), dbdir = "nyc.db")
+# create connection to persistent DuckDB database (could be any supported backend)
+con = dbConnect(duckdb::duckdb(), dbdir = "nyc.db")
 
-# create a 'taxi' table in our new nyc.db database
+# create a 'taxi' table in our new nyc.db database from our parquet dataset
 dbExecute(
    con,
    "
@@ -149,17 +145,17 @@ dbExecute(
    "
 )
 
-# same result as earlier
-duckreg(
+# now run our regression against this conn+table combo
+dbreg(
    tip_amount ~ fare_amount + passenger_count | month + vendor_name,
    conn = con,     # database connection,
    table = "taxi", # table name
    vcov = "hc1"
 )
-#> [duckreg] Estimating compression ratio...
-#> [duckreg] Data has 178,544,324 rows and 24 unique FE groups.
-#> [duckreg] Using strategy: compress
-#> [duckreg] Executing compress strategy SQL
+#> [dbreg] Estimating compression ratio...
+#> [dbreg] Data has 178,544,324 rows and 24 unique FE groups.
+#> [dbreg] Using strategy: compress
+#> [dbreg] Executing compress strategy SQL
 #> 
 #> Compressed OLS estimation, Dep. Var.: tip_amount 
 #> Observations.: 178,544,324 (original) | 70,782 (compressed) 
@@ -170,7 +166,9 @@ duckreg(
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-## (Optional clean-up)
+# Result: we get the same coefficient estimates as earlier
+
+# (optional clean-up)
 dbRemoveTable(con, "taxi")
 dbDisconnect(con)
 unlink("nyc.db") # remove from disk
@@ -181,5 +179,5 @@ unlink("nyc.db") # remove from disk
    load this raw dataset into R could cause your whole system to crash.
 
 [^2]: If we skipped the automatic strategy determination by providing an
-   explict strategy, then the total computation time drops to
+   explicit strategy, then the total computation time drops to
    _less than 1 second_...
