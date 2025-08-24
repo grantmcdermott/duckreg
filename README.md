@@ -78,6 +78,8 @@ feols(Euros ~ dist_km | Destination + Origin, data = trade, vcov = 'hc1')
 For a more appropriate **duckreg** use-case, let's run a regression on some NYC
 taxi data. (Download instructions
 [here](https://grantmcdermott.com/duckdb-polars/requirements.html).)
+The dataset that we're working with here is about 180 million rows deep and
+takes up 8.5 GB on disk (compressed).^[1]
 **duckreg** offers two basic ways to interact with, and analyse, data of this
 size.
 
@@ -115,7 +117,7 @@ Note the size of the original dataset, which is nearly 180 million rows, versus
 the compressed dataset, which is down to only 70k. On my laptop (M4 MacBook Pro)
 this regression completes in **under 2 seconds**... and that includes the time
 it took to determine an optimal estimation strategy, as well read the data from
-disk![^1]
+disk![^2]
 
 #### Option 2: Persistent database
 
@@ -129,8 +131,8 @@ automatically take advantage of DuckDB's
 (streaming, hash aggregation, etc.).
 
 ```r
-## Explicitly load the duckdb (and thus also DBI) to create persistent database
-## and create a table with our taxi data.
+## Explicitly load the duckdb package (and thus also DBI) to create a persistent
+## database
 library(duckdb)
 #> Loading required package: DBI
 
@@ -175,7 +177,9 @@ unlink("nyc.db") # remove from disk
 ```
 
 
+[^1]: Depending on your computer and what else you have going on, just trying to 
+   load this raw dataset into R could cause your whole system to crash.
 
-[^1]: If we skipped the automatic strategy determination by providing an
+[^2]: If we skipped the automatic strategy determination by providing an
    explict strategy, then the total computation time drops to
    _less than 1 second_...
