@@ -1,9 +1,9 @@
-#' Print method for duckreg objects
-#' @param x `duckreg` object.
+#' Print method for dbreg objects
+#' @param x `dbreg` object.
 #' @param fes Should the fixed effects be displayed? Default is `FALSE`.
 #' @param ... Other arguments passed to \code{\link[base]{print}}. Not currently used.
 #' @export
-print.duckreg = function(x, fes = FALSE, ...) {
+print.dbreg = function(x, fes = FALSE, ...) {
     ct = x[["coeftable"]]
     colnames(ct) = c("Estimate", "Std. Error", "t value", "Pr(>|t|)")
     if (!isTRUE(fes) && !is.null(x$fes)) {

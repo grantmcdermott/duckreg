@@ -1,8 +1,8 @@
-Package: duckreg
+Package: dbreg
 Type: Package
-Title: Out-of-Core Regressions With DuckDB
-Version: 0.0.1.99
-Date: 2025-01-29
+Title: Fast Regressions on Database Backends
+Version: 0.0.2
+Date: 2025-08-24
 Authors@R:
   c(
     person(
@@ -27,7 +27,7 @@ Authors@R:
       comment = c(ORCID = "0000-0002-1663-5583")
     )
   )
-Description: Leverages the power of DuckDB to run regressions on very large
+Description: Leverages database backends to run regressions on very large
   datasets, which may not fit into R's memory. Various acceleration
   strategies---e.g., Wong et al. (2021) <doi:10.48550/arXiv.2102.11297> and
   Arkhangelsky & Imbens (2024) <https://doi.org/10.1093/restud/rdad089>---allow
@@ -47,3 +47,4 @@ Enhances:
 Encoding: UTF-8
 RoxygenNote: 7.3.2
 License: MIT + file LICENSE
+URL: https://grantmcdermott.com/dbreg/
