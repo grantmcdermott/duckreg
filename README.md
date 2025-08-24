@@ -1,5 +1,11 @@
 # dbreg
 
+<!-- badges: start -->
+
+<a href="https://CRAN.R-project.org/package=dbreg"><img src="https://www.r-pkg.org/badges/version/dbreg" class="img-fluid" alt="CRAN version"></a>
+<a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/dbreg" class="img-fluid" alt="R-universe version"></a>
+<!-- badges: end -->
+
 Very fast regressions on big datasets.
 
 ## What
@@ -20,9 +26,11 @@ be very similar.
 
 ## Install
 
+**dbreg** can be installed from
+[R-universe](https://grantmcdermott.r-universe.dev/).
+
 ```r
-# install.packages("remotes")
-remotes::install_github("grantmcdermott/dbreg")
+install.packages("dbreg", repos = "https://grantmcdermott.r-universe.dev")
 ```
 
 ## Quickstart
