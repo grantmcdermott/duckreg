@@ -79,7 +79,7 @@ For a more appropriate **duckreg** use-case, let's run a regression on some NYC
 taxi data. (Download instructions
 [here](https://grantmcdermott.com/duckdb-polars/requirements.html).)
 The dataset that we're working with here is about 180 million rows deep and
-takes up 8.5 GB on disk (compressed).^[1]
+takes up 8.5 GB on disk (compressed).[^1]
 **duckreg** offers two basic ways to interact with, and analyse, data of this
 size.
 
