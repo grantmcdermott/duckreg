@@ -89,7 +89,7 @@ For a more appropriate **dbreg** use-case, let's run a regression on some NYC
 taxi data. (Download instructions
 [here](https://grantmcdermott.com/duckdb-polars/requirements.html).)
 The dataset that we're working with here is about 180 million rows deep and
-takes up 8.5 GB on disk (compressed).[^1]
+takes up 8.5 GB on disk.[^1]
 **dbreg** offers two basic ways to analyse and interact with data of this size.
 
 #### Option 1: "On-the-fly"
@@ -173,18 +173,34 @@ dbreg(
 #> passenger_count -0.029086   0.000106 -273.866 < 2.2e-16 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
 
-# Result: we get the same coefficient estimates as earlier
+Result: we get the same coefficient estimates as earlier.
 
-# (optional clean-up)
+We'll close by doing some (optional) clean up.
+
+```r
 dbRemoveTable(con, "taxi")
 dbDisconnect(con)
 unlink("nyc.db") # remove from disk
 ```
 
+## Limitations
 
-[^1]: Depending on your computer and what else you have going on, just trying to 
-   load this raw dataset into R could cause your whole system to crash.
+**dbreg** is a maturing package and there are a number of features that we still
+plan to add before submitting it to CRAN. (See our
+[TO-DO](https://github.com/grantmcdermott/dbreg/issues/5) list.) We also don't
+yet support some standard R operations like interaction terms in the formula. At 
+the same time, the core `dbreg()` routine has been pretty thoroughly tested and
+should work in standard cases. Please help us by kicking the tyres and creating
+GitHub for both bug reports and feature requests.
+
+[^1]: To be clear, this dataset would occupy significantly more memory than 8.5
+   GB if we loaded into R, due to data serialization and the switch to richer
+   representation formats (e.g., orderd factors take up more memory). So there's
+   a good chance that just trying to load this raw dataset into R would cause
+   your whole system to crash... never mind doing any statistical analysis on
+   it.
 
 [^2]: If we skipped the automatic strategy determination by providing an
    explicit strategy, then the total computation time drops to
