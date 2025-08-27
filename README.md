@@ -193,7 +193,7 @@ plan to add before submitting it to CRAN. (See our
 yet support some standard R operations like interaction terms in the formula. At 
 the same time, the core `dbreg()` routine has been pretty thoroughly tested and
 should work in standard cases. Please help us by kicking the tyres and creating
-GitHub for both bug reports and feature requests.
+GitHub issues for both bug reports and feature requests.
 
 [^1]: To be clear, this dataset would occupy significantly more memory than 8.5
    GB if we loaded into R, due to data serialization and the switch to richer
