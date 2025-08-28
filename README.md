@@ -6,12 +6,12 @@
 <a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/dbreg" class="img-fluid" alt="R-universe version"></a>
 <!-- badges: end -->
 
-Very fast regressions on big datasets.
+Fast regressions on database backends.
 
 ## What
 
-**dbreg** is an R package that leverages the power of **d**ata**b**ases to run
-**reg**ressions on very large datasets, which may not fit into R's memory. 
+**dbreg** is an R package that leverages the power of databases to run
+regressions on very large datasets, which may not fit into R's memory. 
 Various acceleration strategies allow for highly efficient computation, while 
 robust standard errors are computed from sufficient statistics. Our default
 [DuckDB](https://duckdb.org/) backend provides a powerful, embedded analytics
