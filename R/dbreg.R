@@ -582,9 +582,10 @@ execute_moments_strategy = function(inputs) {
     XtX[xi, xj] = XtX[xj, xi] = val
   }
 
-  solve_result = solve_with_ridge_fallback(XtX, Xty, inputs$ridge_rel)
+  solve_result = solve_with_fallback(XtX, Xty, inputs$ridge_rel)
   betahat = solve_result$betahat
-  Rch = solve_result$Rch
+  # Rch = solve_result$Rch
+  XtX_inv = solve_result$XtX_inv
   rownames(betahat) = vars_all
 
   rss = as.numeric(
@@ -593,7 +594,7 @@ execute_moments_strategy = function(inputs) {
       t(betahat) %*% XtX %*% betahat
   )
   df_res = max(n_total - p, 1)
-  XtX_inv = chol2inv(Rch)
+  # XtX_inv = chol2inv(Rch)
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
     strategy = "moments",
@@ -899,9 +900,10 @@ execute_mundlak_strategy = function(inputs) {
     }
   }
 
-  solve_result = solve_with_ridge_fallback(XtX, Xty, inputs$ridge_rel)
+  solve_result = solve_with_fallback(XtX, Xty, inputs$ridge_rel)
   betahat = solve_result$betahat
-  Rch = solve_result$Rch
+  # Rch = solve_result$Rch
+  XtX_inv = solve_result$XtX_inv
   rownames(betahat) = vars_all
 
   rss = as.numeric(
@@ -911,7 +913,7 @@ execute_mundlak_strategy = function(inputs) {
   )
   df_fe = n_fe1 + n_fe2 - 1
   df_res = max(n_total - p - df_fe, 1)
-  XtX_inv = chol2inv(Rch)
+  # XtX_inv = chol2inv(Rch)
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
     strategy = "mundlak",
@@ -1015,9 +1017,10 @@ execute_compress_strategy = function(inputs) {
   XtX = crossprod(Xw)
   XtY = crossprod(Xw, Yw)
 
-  solve_result = solve_with_ridge_fallback(XtX, XtY, inputs$ridge_rel)
+  solve_result = solve_with_fallback(XtX, XtY, inputs$ridge_rel)
   betahat = solve_result$betahat
-  Rch = solve_result$Rch
+  # Rch = solve_result$Rch
+  XtX_inv = solve_result$XtX_inv
   if (is.null(dim(betahat))) {
     betahat = matrix(betahat, ncol = 1)
   }
@@ -1030,7 +1033,7 @@ execute_compress_strategy = function(inputs) {
   rss_g = sum_Y_sq - 2 * yhat * sum_Y + n_vec * (yhat^2)
   rss_total = sum(rss_g)
   df_res = max(nobs_orig - ncol(X), 1)
-  XtX_inv = chol2inv(Rch)
+  # XtX_inv = chol2inv(Rch)
 
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
@@ -1065,6 +1068,7 @@ execute_compress_strategy = function(inputs) {
 #' Solve linear system with ridge fallback
 #' @keywords internal
 solve_with_ridge_fallback = function(XtX, Xty, ridge_rel) {
+  # browser()
   p = nrow(XtX)
   Rch = tryCatch(chol(XtX), error = function(e) {
     ridge = ridge_rel * mean(diag(XtX))
@@ -1072,6 +1076,24 @@ solve_with_ridge_fallback = function(XtX, Xty, ridge_rel) {
   })
   betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
   list(betahat = betahat, Rch = Rch)
+}
+
+#' Solve linear system using Cholesky but with QR fallback
+#' @keywords internal
+solve_with_fallback = function(XtX, Xty, ridge_rel) {
+  # browser()
+  Rch = tryCatch(chol(XtX), error = function(e) NULL)
+  if (is.null(Rch)) {
+    # Cholesky failed, use QR fallback
+    qr_decomp = qr(XtX)
+    betahat = qr.solve(qr_decomp, Xty)
+    XtX_inv = qr.solve(qr_decomp, diag(ncol(XtX)))
+  } else {
+    # Cholesky succeeded
+    betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
+    XtX_inv = chol2inv(Rch)
+  }
+  list(betahat = betahat, XtX_inv = XtX_inv)
 }
 
 #' Compute variance-covariance matrix
