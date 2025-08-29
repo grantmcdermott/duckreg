@@ -47,9 +47,6 @@
 #'   rows in the dataset. If this ratio is below the given the given threshold
 #'   (default = 0.1%), then the `"compress"` strategy is used, otherwise
 #'   `"mundlak"` or `"moments"` depending on the number of fixed effects.
-#' @param ridge_rel Relative ridge penalty to be used if the default Cholesky
-#'   solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
-#'   `lambda = ridge_rel * mean(diag(X'X))`.
 #' @param query_only Logical indicating whether only the underlying compression
 #'   SQL query should be returned (i.e., no computation will be performed).
 #'   Default is `FALSE`.
@@ -134,7 +131,6 @@ dbreg = function(
   vcov = c("iid", "hc1"),
   strategy = c("auto", "compress", "moments", "mundlak"),
   threshold = 0.001,
-  ridge_rel = 1e-12,
   query_only = FALSE,
   data_only = FALSE,
   verbose = TRUE
@@ -155,8 +151,7 @@ dbreg = function(
     query_only,
     data_only,
     threshold,
-    verbose,
-    ridge_rel
+    verbose
   )
 
   # Choose strategy
@@ -191,8 +186,7 @@ process_dbreg_inputs = function(
   query_only,
   data_only,
   threshold,
-  verbose,
-  ridge_rel
+  verbose
 ) {
   vcov_type_req = vcov
   own_conn = FALSE
@@ -300,7 +294,6 @@ process_dbreg_inputs = function(
     data_only = data_only,
     threshold = threshold,
     verbose = verbose,
-    ridge_rel = ridge_rel,
     any_continuous = any_continuous,
     own_conn = own_conn
   )
@@ -582,7 +575,7 @@ execute_moments_strategy = function(inputs) {
     XtX[xi, xj] = XtX[xj, xi] = val
   }
 
-  solve_result = solve_with_fallback(XtX, Xty, inputs$ridge_rel)
+  solve_result = solve_with_fallback(XtX, Xty)
   betahat = solve_result$betahat
   # Rch = solve_result$Rch
   XtX_inv = solve_result$XtX_inv
@@ -900,7 +893,7 @@ execute_mundlak_strategy = function(inputs) {
     }
   }
 
-  solve_result = solve_with_fallback(XtX, Xty, inputs$ridge_rel)
+  solve_result = solve_with_fallback(XtX, Xty)
   betahat = solve_result$betahat
   # Rch = solve_result$Rch
   XtX_inv = solve_result$XtX_inv
@@ -1017,7 +1010,7 @@ execute_compress_strategy = function(inputs) {
   XtX = crossprod(Xw)
   XtY = crossprod(Xw, Yw)
 
-  solve_result = solve_with_fallback(XtX, XtY, inputs$ridge_rel)
+  solve_result = solve_with_fallback(XtX, XtY)
   betahat = solve_result$betahat
   # Rch = solve_result$Rch
   XtX_inv = solve_result$XtX_inv
@@ -1065,23 +1058,9 @@ execute_compress_strategy = function(inputs) {
   )
 }
 
-#' Solve linear system with ridge fallback
-#' @keywords internal
-solve_with_ridge_fallback = function(XtX, Xty, ridge_rel) {
-  # browser()
-  p = nrow(XtX)
-  Rch = tryCatch(chol(XtX), error = function(e) {
-    ridge = ridge_rel * mean(diag(XtX))
-    chol(XtX + diag(ridge, p))
-  })
-  betahat = backsolve(Rch, forwardsolve(Matrix::t(Rch), Xty))
-  list(betahat = betahat, Rch = Rch)
-}
-
 #' Solve linear system using Cholesky but with QR fallback
 #' @keywords internal
-solve_with_fallback = function(XtX, Xty, ridge_rel) {
-  # browser()
+solve_with_fallback = function(XtX, Xty) {
   Rch = tryCatch(chol(XtX), error = function(e) NULL)
   if (is.null(Rch)) {
     # Cholesky failed, use QR fallback
