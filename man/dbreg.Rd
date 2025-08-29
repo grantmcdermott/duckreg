@@ -13,7 +13,6 @@ dbreg(
   vcov = c("iid", "hc1"),
   strategy = c("auto", "compress", "moments", "mundlak"),
   threshold = 0.001,
-  ridge_rel = 1e-12,
   query_only = FALSE,
   data_only = FALSE,
   verbose = TRUE
@@ -67,10 +66,6 @@ the Acceleration Strategies section below for details.}
 rows in the dataset. If this ratio is below the given the given threshold
 (default = 0.1\%), then the \code{"compress"} strategy is used, otherwise
 \code{"mundlak"} or \code{"moments"} depending on the number of fixed effects.}
-
-\item{ridge_rel}{Relative ridge penalty to be used if the default Cholesky
-solve fails; see \code{\link[Matrix]{Cholesky}}. Technical note:
-\verb{lambda = ridge_rel * mean(diag(X'X))}.}
 
 \item{query_only}{Logical indicating whether only the underlying compression
 SQL query should be returned (i.e., no computation will be performed).
