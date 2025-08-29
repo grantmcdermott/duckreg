@@ -107,7 +107,7 @@
 #'
 #' @examples
 #'
-#' # A not very compelling example using a small in-memory dataset:
+#' # A not very compelling example using a small iin-memory dataset:
 #' (mod = dbreg(Temp ~ Wind | Month, data = airquality))
 #'
 #' # Same result as lm
@@ -577,7 +577,6 @@ execute_moments_strategy = function(inputs) {
 
   solve_result = solve_with_fallback(XtX, Xty)
   betahat = solve_result$betahat
-  # Rch = solve_result$Rch
   XtX_inv = solve_result$XtX_inv
   rownames(betahat) = vars_all
 
@@ -587,7 +586,6 @@ execute_moments_strategy = function(inputs) {
       t(betahat) %*% XtX %*% betahat
   )
   df_res = max(n_total - p, 1)
-  # XtX_inv = chol2inv(Rch)
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
     strategy = "moments",
@@ -895,7 +893,6 @@ execute_mundlak_strategy = function(inputs) {
 
   solve_result = solve_with_fallback(XtX, Xty)
   betahat = solve_result$betahat
-  # Rch = solve_result$Rch
   XtX_inv = solve_result$XtX_inv
   rownames(betahat) = vars_all
 
@@ -906,7 +903,6 @@ execute_mundlak_strategy = function(inputs) {
   )
   df_fe = n_fe1 + n_fe2 - 1
   df_res = max(n_total - p - df_fe, 1)
-  # XtX_inv = chol2inv(Rch)
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
     strategy = "mundlak",
@@ -1012,7 +1008,6 @@ execute_compress_strategy = function(inputs) {
 
   solve_result = solve_with_fallback(XtX, XtY)
   betahat = solve_result$betahat
-  # Rch = solve_result$Rch
   XtX_inv = solve_result$XtX_inv
   if (is.null(dim(betahat))) {
     betahat = matrix(betahat, ncol = 1)
@@ -1026,7 +1021,6 @@ execute_compress_strategy = function(inputs) {
   rss_g = sum_Y_sq - 2 * yhat * sum_Y + n_vec * (yhat^2)
   rss_total = sum(rss_g)
   df_res = max(nobs_orig - ncol(X), 1)
-  # XtX_inv = chol2inv(Rch)
 
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
