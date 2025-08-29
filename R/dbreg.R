@@ -853,6 +853,12 @@ execute_mundlak_strategy = function(inputs) {
     )
   }
 
+  # Athena FLOAT gotcha
+  # https://github.com/DyfanJones/noctua/issues/228
+  if (class(inputs$conn) == "AthenaConnection") {
+    mundlak_sql = gsub("FLOAT", "REAL", mundlak_sql, fixed = TRUE)
+  }
+
   if (inputs$query_only) {
     return(mundlak_sql)
   }
@@ -935,6 +941,12 @@ execute_mundlak_strategy = function(inputs) {
 #' Execute compress strategy (groupby compression)
 #' @keywords internal
 execute_compress_strategy = function(inputs) {
+  from_statement = inputs$from_statement
+  # catch for sampled (limited) queries
+  if (grepl("LIMIT\\s+\\d+\\s*$", from_statement, ignore.case = TRUE)) {
+    from_statement = glue("FROM (SELECT * {from_statement})")
+  }
+
   group_cols = c(inputs$xvars, inputs$fes)
   group_cols_sql = paste(group_cols, collapse = ", ")
   query_string = paste0(
@@ -951,7 +963,7 @@ execute_compress_strategy = function(inputs) {
     inputs$yvar,
     ", 2)) AS sum_Y_sq
     ",
-    inputs$from_statement,
+    from_statement,
     "
     GROUP BY ",
     group_cols_sql,
@@ -967,7 +979,6 @@ execute_compress_strategy = function(inputs) {
   if (inputs$query_only) {
     return(query_string)
   }
-
   if (inputs$verbose) {
     message("[dbreg] Executing compress strategy SQL\n")
   }
