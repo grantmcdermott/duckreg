@@ -15,8 +15,7 @@ process_dbreg_inputs(
   query_only,
   data_only,
   threshold,
-  verbose,
-  ridge_rel
+  verbose
 )
 }
 \description{

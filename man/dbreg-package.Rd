@@ -7,6 +7,13 @@
 \description{
 Leverages database backends to run regressions on very large datasets, which may not fit into R's memory. Various acceleration strategies---e.g., Wong et al. (2021) \doi{10.48550/arXiv.2102.11297} and Arkhangelsky & Imbens (2024) \url{https://doi.org/10.1093/restud/rdad089}---allow for highly efficient computation, while robust standard errors are computed from sufficient statistics.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://grantmcdermott.com/dbreg/}
+}
+
+}
 \author{
 \strong{Maintainer}: Grant McDermott \email{gmcd@amazon.com} (\href{https://orcid.org/0000-0001-7883-8573}{ORCID})
 
