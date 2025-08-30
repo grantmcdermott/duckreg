@@ -18,7 +18,7 @@
 #' closed before the function exits. Note that a persistent (disk-backed)
 #' database connection is required for larger-than-RAM datasets in order to take
 #' advantage of out-of-core functionality like streaming (where supported).
-#' @param table,data,path Mututally exclusive arguments for specifying the data
+#' @param table,data,path Mutually exclusive arguments for specifying the data
 #' table (object) to be queried. In order of precedence:
 #' - `table`: Character string giving the name of the data table in an
 #' existing (open) database connection.
@@ -43,12 +43,22 @@
 #'   internal heuristics. Users can also override with one of the following
 #'   explicit strategies: `"compress"`, `"mundlak"`, or `"moments"`. See
 #'   the Acceleration Strategies section below for details.
-#' @param threshold Numeric. Threshold for determining the acceleration
-#'   `strategy` under the default `"auto"` option. Maps to the ratio between
-#'   (a) unique values of combined covariates and fixed effects, and (b) total
-#'   rows in the dataset. If this ratio is below the given the given threshold
-#'   (default = 0.1%), then the `"compress"` strategy is used, otherwise
-#'   `"mundlak"` or `"moments"` depending on the number of fixed effects.
+#' @param compress_ratio,compress_nmax Numeric(s). Parameters that help to
+#'   determine the acceleration `strategy` under the default `"auto"` option.
+#'
+#'   - `compress_ratio` defines the compression ratio threshold, i.e. compressed
+#'     data size vs. original data size. An estimated compression ratio larger
+#'     than this threshold indicates poor compression relative to the desired
+#'     level.
+#'   - `compress_nmax` defines the maximum allowable size (in rows) of the
+#'     compressed dataset that can be serialized into R. Pays heed to the idea
+#'     that big data serialization can be costly (esp. for remote databases),
+#'     even if we have achieved good compression on top of the original dataset.
+#'
+#' If both conditions are met, i.e. (1) estimated compression ratio <
+#' `compress_ratio` and (2) estimated compressed data size < `compress_nmax`,
+#' then the `"compress"` strategy is used. Otherwise, either the `"mundlak"` or
+#' `"moments"` strategy will be used, depending on the number of fixed effects.
 #' @param query_only Logical indicating whether only the underlying compression
 #'   SQL query should be returned (i.e., no computation will be performed).
 #'   Default is `FALSE`.
@@ -62,10 +72,11 @@
 #'
 #' @section Acceleration strategies:
 #'
-#' `dbreg` offers three primary acceleration (shortcut) strategies:
+#' `dbreg` offers three primary acceleration (shortcut) strategies for
+#' estimating regression results from simplied data representations:
 #'
-#' 1. `"compress"`: compress the size of data via a `GROUP BY` operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
-#' 2. `"moments"`: calculate sufficient statistics using global means (\eqn{X'X, X'y}). Limited to cases without fixed effects.
+#' 1. `"compress"`: compress the data via a `GROUP BY` operation (using regressors + fixed effects as groups) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
+#' 2. `"moments"`: calculate sufficient statistics from global means (\eqn{X'X, X'y}), i.e. a single-row data frame computed on the database backend. Limited to cases without fixed effects.
 #' 3. `"mundlak"`: as per `"moments"`, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
 #'
 #' The relative efficiency of each of these strategies depends on the size and
@@ -74,7 +85,7 @@
 #' performance gains for "standard" cases, it is less efficient for a true panel
 #' (repeated cross-sections over time), where N >> T. In such cases, it is more
 #' efficient to use a Mundlak-type representation that subtracts group means
-#' first. (Reason: unit and time fixed effects are typically high dimensional,
+#' first. (Reason: unit and time fixed-effects are typically high dimensional,
 #' but covariate averages are not.)
 #'
 #' If the user does not specify an explicit acceleration strategy, then
@@ -82,8 +93,8 @@
 #' some additional overhead, but in most cases should be negligible next to the
 #' overall time savings. The heuristic is as follows:
 #'
-#' - IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) THEN `"moments"`.
-#' - ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) THEN `"mundlak"`.
+#' - IF no fixed-effects AND (any continuous regressor OR poor compression ratio OR too big compressed data) THEN `"moments"`.
+#' - ELSE IF 1-2 fixed-effects AND (poor compression ratio OR too big compressed data) THEN `"mundlak"`.
 #' - ELSE THEN `"compress"`.
 #'
 #' @references
@@ -109,7 +120,7 @@
 #'
 #' @examples
 #'
-#' # A not very compelling example using a small in-memory dataset:
+#' # A not very compelling example using a small iin-memory dataset:
 #' (mod = dbreg(Temp ~ Wind | Month, data = airquality))
 #'
 #' # Same result as lm
@@ -133,7 +144,8 @@ dbreg = function(
   weights = NULL,
   vcov = c("iid", "hc1"),
   strategy = c("auto", "compress", "moments", "mundlak"),
-  threshold = 0.001,
+  compress_ratio = 0.001,
+  compress_nmax = 1e6,
   query_only = FALSE,
   data_only = FALSE,
   verbose = TRUE
@@ -144,18 +156,19 @@ dbreg = function(
 
   # Process and validate inputs
   inputs = process_dbreg_inputs(
-    fml,
-    conn,
-    table,
-    data,
-    path,
-    weights,
-    vcov,
-    strategy,
-    query_only,
-    data_only,
-    threshold,
-    verbose
+    fml = fml,
+    conn = conn,
+    table = table,
+    data = data,
+    path = path,
+    weights = weights,
+    vcov = vcov,
+    strategy = strategy,
+    query_only = query_only,
+    data_only = data_only,
+    compress_ratio = compress_ratio,
+    compress_nmax = compress_nmax,
+    verbose = verbose
   )
 
   # Choose strategy
@@ -190,7 +203,8 @@ process_dbreg_inputs = function(
   strategy,
   query_only,
   data_only,
-  threshold,
+  compress_ratio,
+  compress_nmax,
   verbose
 ) {
   vcov_type_req = vcov
@@ -309,7 +323,8 @@ process_dbreg_inputs = function(
     strategy = strategy,
     query_only = query_only,
     data_only = data_only,
-    threshold = threshold,
+    compress_ratio = compress_ratio,
+    compress_nmax = compress_nmax,
     verbose = verbose,
     any_continuous = any_continuous,
     own_conn = own_conn
@@ -385,7 +400,8 @@ choose_strategy = function(inputs) {
   fes = inputs$fes
   verbose = inputs$verbose
   any_continuous = inputs$any_continuous
-  threshold = inputs$threshold
+  compress_ratio = inputs$compress_ratio
+  compress_nmax = inputs$compress_nmax
   conn = inputs$conn
   from_statement = inputs$from_statement
   xvars = inputs$xvars
@@ -411,7 +427,7 @@ choose_strategy = function(inputs) {
     from_statement = inputs$from_statement
 
     if (verbose) {
-      message("[dbreg] Estimating compression ratio...")
+      message("[dbreg] Estimating compression ratio and data size...")
     }
     key_cols = c(xvars, fes)
     if (!length(key_cols)) {
@@ -459,7 +475,10 @@ choose_strategy = function(inputs) {
       )
     }
 
-    n_groups_total / max(total_n, 1)
+    comp_rat = n_groups_total / max(total_n, 1)
+    attr(comp_rat, "comp_size") = n_groups_total
+
+    return(comp_rat)
   }
 
   chosen_strategy = strategy
@@ -467,35 +486,48 @@ choose_strategy = function(inputs) {
 
   # Auto logic
   if (strategy == "auto") {
+    est_cr = tryCatch(estimate_compression(inputs), error = function(e) {
+      NA_real_
+    })
+    comp_size = attr(est_cr, "comp_size")
     if (length(fes) == 0) {
-      est_cr = tryCatch(estimate_compression(inputs), error = function(e) {
-        NA_real_
-      })
-      if (any_continuous || (!is.na(est_cr) && est_cr > threshold)) {
+      fail_compress_ratio = !is.na(est_cr) && est_cr > compress_ratio
+      fail_compress_nmax = !is.na(est_cr) && comp_size > compress_nmax
+      if (any_continuous || (fail_compress_ratio || fail_compress_nmax)) {
         chosen_strategy = "moments"
       } else {
         chosen_strategy = "compress"
       }
     } else if (length(fes) %in% c(1, 2)) {
-      est_cr = tryCatch(estimate_compression(inputs), error = function(e) {
-        NA_real_
-      })
-      if (!is.na(est_cr) && est_cr > max(0.6, threshold)) {
+      fail_compress_ratio = !is.na(est_cr) && est_cr > max(0.6, compress_ratio)
+      fail_compress_nmax = !is.na(est_cr) && comp_size > compress_nmax
+      if (fail_compress_ratio || fail_compress_nmax) {
         chosen_strategy = "mundlak"
         if (verbose) {
-          message(
-            "[dbreg] Auto: selecting mundlak (estimated compression ratio ",
-            sprintf("%.2f", est_cr),
-            ")."
-          )
+          if (fail_compress_ratio) {
+            reason = paste0(
+              "compression ratio (",
+              sprintf("%.2f", est_cr),
+              ") > threshold (",
+              max(0.6, compress_ratio),
+              ")."
+            )
+          } else {
+            reason = paste0(
+              "compressed data size (",
+              prettyNum(comp_size, big.mark = ","),
+              " rows) > threshold (",
+              prettyNum(compress_nmax, big.mark = ","),
+              " rows)."
+            )
+          }
+          message("[dbreg] Auto: ", reason)
+          message("[dbreg] Auto: selecting mundlak")
         }
       } else {
         chosen_strategy = "compress"
       }
     } else {
-      est_cr = tryCatch(estimate_compression(inputs), error = function(e) {
-        NA_real_
-      })
       chosen_strategy = "compress"
       if (!is.na(est_cr) && est_cr > 0.8 && verbose) {
         message(sprintf(
@@ -627,11 +659,10 @@ execute_moments_strategy = function(inputs) {
       2 * t(betahat) %*% Xty +
       t(betahat) %*% XtX %*% betahat
   )
-  
-  # Effective sample size for weighted regression
+ 
   n_eff = moments_df$n_obs
   df_res = max(n_eff - p, 1)
-  
+
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
     strategy = "moments",
@@ -1091,7 +1122,13 @@ execute_mundlak_strategy = function(inputs) {
       )
     }
   }
-  
+
+  # Athena FLOAT gotcha
+  # https://github.com/DyfanJones/noctua/issues/228
+  if (class(inputs$conn) == "AthenaConnection") {
+    mundlak_sql = gsub("FLOAT", "REAL", mundlak_sql, fixed = TRUE)
+  }
+
   if (inputs$query_only) {
     return(mundlak_sql)
   }
@@ -1142,6 +1179,7 @@ execute_mundlak_strategy = function(inputs) {
   )
   df_fe = n_fe1 + n_fe2 - 1
   df_res = max(mundlak_df$n_obs - p - df_fe, 1)
+
   vcov_mat = compute_vcov(
     vcov_type = inputs$vcov_type_req,
     strategy = "mundlak",
@@ -1176,6 +1214,12 @@ execute_mundlak_strategy = function(inputs) {
 #' Execute compress strategy (groupby compression)
 #' @keywords internal
 execute_compress_strategy = function(inputs) {
+  from_statement = inputs$from_statement
+  # catch for sampled (limited) queries
+  if (grepl("LIMIT\\s+\\d+\\s*$", from_statement, ignore.case = TRUE)) {
+    from_statement = glue("FROM (SELECT * {from_statement})")
+  }
+
   group_cols = c(inputs$xvars, inputs$fes)
   group_cols_sql = paste(group_cols, collapse = ", ")
   
@@ -1211,7 +1255,6 @@ execute_compress_strategy = function(inputs) {
   if (inputs$query_only) {
     return(query_string)
   }
-
   if (inputs$verbose) {
     message(if (!is.null(inputs$weights)) "[dbreg] Executing weighted compress strategy SQL\n" else "[dbreg] Executing compress strategy SQL\n")
   }
@@ -1264,6 +1307,7 @@ execute_compress_strategy = function(inputs) {
   sum_wY_sq = compressed_dat$sum_wY_sq
   rss_g = sum_wY_sq - 2 * yhat * sum_wY + sum_weights * (yhat^2)
   rss_total = sum(rss_g)
+
   n_obs = compressed_dat$n_obs
   df_res = max(n_obs - ncol(X), 1)
 

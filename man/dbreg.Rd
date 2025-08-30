@@ -12,7 +12,8 @@ dbreg(
   path = NULL,
   vcov = c("iid", "hc1"),
   strategy = c("auto", "compress", "moments", "mundlak"),
-  threshold = 0.001,
+  compress_ratio = 0.001,
+  compress_nmax = 1e+06,
   query_only = FALSE,
   data_only = FALSE,
   verbose = TRUE
@@ -32,7 +33,7 @@ closed before the function exits. Note that a persistent (disk-backed)
 database connection is required for larger-than-RAM datasets in order to take
 advantage of out-of-core functionality like streaming (where supported).}
 
-\item{table, data, path}{Mututally exclusive arguments for specifying the data
+\item{table, data, path}{Mutually exclusive arguments for specifying the data
 table (object) to be queried. In order of precedence:
 \itemize{
 \item \code{table}: Character string giving the name of the data table in an
@@ -60,12 +61,23 @@ internal heuristics. Users can also override with one of the following
 explicit strategies: \code{"compress"}, \code{"mundlak"}, or \code{"moments"}. See
 the Acceleration Strategies section below for details.}
 
-\item{threshold}{Numeric. Threshold for determining the acceleration
-\code{strategy} under the default \code{"auto"} option. Maps to the ratio between
-(a) unique values of combined covariates and fixed effects, and (b) total
-rows in the dataset. If this ratio is below the given the given threshold
-(default = 0.1\%), then the \code{"compress"} strategy is used, otherwise
-\code{"mundlak"} or \code{"moments"} depending on the number of fixed effects.}
+\item{compress_ratio, compress_nmax}{Numeric(s). Parameters that help to
+determine the acceleration \code{strategy} under the default \code{"auto"} option.
+\itemize{
+\item \code{compress_ratio} defines the compression ratio threshold, i.e. compressed
+data size vs. original data size. An estimated compression ratio larger
+than this threshold indicates poor compression relative to the desired
+level.
+\item \code{compress_nmax} defines the maximum allowable size (in rows) of the
+compressed dataset that can be serialized into R. Pays heed to the idea
+that big data serialization can be costly (esp. for remote databases),
+even if we have achieved good compression on top of the original dataset.
+}
+
+If both conditions are met, i.e. (1) estimated compression ratio <
+\code{compress_ratio} and (2) estimated compressed data size < \code{compress_nmax},
+then the \code{"compress"} strategy is used. Otherwise, either the \code{"mundlak"} or
+\code{"moments"} strategy will be used, depending on the number of fixed effects.}
 
 \item{query_only}{Logical indicating whether only the underlying compression
 SQL query should be returned (i.e., no computation will be performed).
@@ -93,7 +105,7 @@ sufficient statistics.
 \code{dbreg} offers three primary acceleration (shortcut) strategies:
 \enumerate{
 \item \code{"compress"}: compress the size of data via a \verb{GROUP BY} operation (using regressors + fixed effects) and then run frequency-weighted least squares on the smaller dataset. This procedure follows the "optimal data compression" strategy proposed by Wang et. al. (2021).
-\item \code{"moments"}: calculate sufficient statistics using global means (\eqn{X'X, X'y}). Limited to cases without fixed effects.
+\item \code{"moments"}: calculate sufficient statistics from global means (\eqn{X'X, X'y}), i.e. a single-row data frame computed on the database backend. Limited to cases without fixed effects.
 \item \code{"mundlak"}: as per \code{"moments"}, but first subtract group-level means from the observations. Permits at most two fixed-effects (i.e., either demean or double-demean). This procedure follows the "generalized Mundlak estimator" proposed by Arkhangelsky & Imbens (2024).
 }
 
@@ -103,7 +115,7 @@ fixed-effects. While the compression approach can yield remarkable
 performance gains for "standard" cases, it is less efficient for a true panel
 (repeated cross-sections over time), where N >> T. In such cases, it is more
 efficient to use a Mundlak-type representation that subtracts group means
-first. (Reason: unit and time fixed effects are typically high dimensional,
+first. (Reason: unit and time fixed-effects are typically high dimensional,
 but covariate averages are not.)
 
 If the user does not specify an explicit acceleration strategy, then
@@ -111,15 +123,15 @@ If the user does not specify an explicit acceleration strategy, then
 some additional overhead, but in most cases should be negligible next to the
 overall time savings. The heuristic is as follows:
 \itemize{
-\item IF no fixed-effects AND (any continuous regressor OR compression ratio > threshold) THEN \code{"moments"}.
-\item ELSE IF 1-2 fixed-effects AND estimated compression ratio high (i.e., > max(0.6, threshold)) THEN \code{"mundlak"}.
+\item IF no fixed-effects AND (any continuous regressor OR poor compression ratio OR too big compressed data) THEN \code{"moments"}.
+\item ELSE IF 1-2 fixed-effects AND (poor compression ratio OR too big compressed data) THEN \code{"mundlak"}.
 \item ELSE THEN \code{"compress"}.
 }
 }
 
 \examples{
 
-# A not very compelling example using a small in-memory dataset:
+# A not very compelling example using a small iin-memory dataset:
 (mod = dbreg(Temp ~ Wind | Month, data = airquality))
 
 # Same result as lm

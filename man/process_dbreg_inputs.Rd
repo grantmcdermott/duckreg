@@ -14,7 +14,8 @@ process_dbreg_inputs(
   strategy,
   query_only,
   data_only,
-  threshold,
+  compress_ratio,
+  compress_nmax,
   verbose
 )
 }
