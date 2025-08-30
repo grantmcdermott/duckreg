@@ -191,7 +191,7 @@ unlink("nyc.db") # remove from disk
 plan to add before submitting it to CRAN. (See our
 [TO-DO](https://github.com/grantmcdermott/dbreg/issues/5) list.) We also don't
 yet support some standard R operations like interaction terms in the formula. At 
-the same time, the core `dbreg()` routine has been test pretty thoroughly and
+the same time, the core `dbreg()` routine has been tested pretty thoroughly and
 should work in standard cases. Please help us by kicking the tyres and creating
 GitHub issues for both bug reports and feature requests.
 
