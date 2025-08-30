@@ -462,29 +462,38 @@ choose_strategy = function(inputs) {
     })
     comp_size = attr(est_cr, "comp_size")
     if (length(fes) == 0) {
-      if (
-        any_continuous ||
-          (!is.na(est_cr) &&
-            (est_cr > compress_ratio || comp_size > compress_nmax))
-      ) {
+      fail_compress_ratio = !is.na(est_cr) && est_cr > compress_ratio
+      fail_compress_nmax = !is.na(est_cr) && comp_size > compress_nmax
+      if (any_continuous || (fail_compress_ratio || fail_compress_nmax)) {
         chosen_strategy = "moments"
       } else {
         chosen_strategy = "compress"
       }
     } else if (length(fes) %in% c(1, 2)) {
-      if (
-        !is.na(est_cr) &&
-          (est_cr > max(0.6, compress_ratio) || comp_size > compress_nmax)
-      ) {
+      fail_compress_ratio = !is.na(est_cr) && est_cr > max(0.6, compress_ratio)
+      fail_compress_nmax = !is.na(est_cr) && comp_size > compress_nmax
+      if (fail_compress_ratio || fail_compress_nmax) {
         chosen_strategy = "mundlak"
         if (verbose) {
-          message(
-            "[dbreg] Auto: selecting mundlak (compression ratio = ",
-            sprintf("%.2f", est_cr),
-            ", data size = ",
-            prettyNum(comp_size, big.mark = ","),
-            ")."
-          )
+          if (fail_compress_ratio) {
+            reason = paste0(
+              "compression ratio (",
+              sprintf("%.2f", est_cr),
+              ") > threshold (",
+              max(0.6, compress_ratio),
+              ")."
+            )
+          } else {
+            reason = paste0(
+              "compressed data size (",
+              prettyNum(comp_size, big.mark = ","),
+              " rows) > threshold (",
+              prettyNum(compress_nmax, big.mark = ","),
+              " rows)."
+            )
+          }
+          message("[dbreg] Auto: ", reason)
+          message("[dbreg] Auto: selecting mundlak")
         }
       } else {
         chosen_strategy = "compress"
